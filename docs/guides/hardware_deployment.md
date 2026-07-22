@@ -8,14 +8,30 @@ interface and how to take it to simulation or an FPGA.
 
 ## Verilog interface
 
-`circuit.get_verilog_code()` returns a combinational `module circuit` with:
+`circuit.get_verilog_code()` returns a combinational `module circuit` with
+`pipeline=0` and a pipelined module with a `clk` input when `pipeline>0`.
 
-**Boolean-only models** (no `GroupSum`):
+Use `pipeline=N` to insert `N` register banks on each recorded stage boundary.
+For typical TorchLogix models, these boundaries correspond to transitions into
+the next gathered logic stage or a final `GroupSum` reduction.
+
+**Boolean-only models** (no `GroupSum`, `pipeline=0`):
 
 ```verilog
 module circuit (
     input  wire [N_IN-1:0]  inp,
     output wire [N_OUT-1:0] out
+);
+```
+
+**Boolean-only models with pipelining enabled** add a clock port and internal
+register banks on recorded stage crossings:
+
+```verilog
+module circuit (
+    input  wire               clk,
+    input  wire [N_IN-1:0]    inp,
+    output wire [N_OUT-1:0]   out
 );
 ```
 
@@ -57,6 +73,7 @@ Write the Verilog to a file and run the TCL script in `examples/synthesis/`:
 
 ```python
 circuit.write_verilog_code("circuit.v")
+circuit.write_verilog_code("circuit_p1.v", pipeline=1)
 ```
 
 ```bash
@@ -75,6 +92,6 @@ synthesis reports.
 | Property | Value |
 |----------|-------|
 | Combinational depth | proportional to network depth (one gate per LUT tree level) |
-| Critical path | dominated by the deepest gate chain; use `circuit.simplify()` to reduce gate count before export |
+| Critical path | dominated by the deepest gate chain; use `circuit.simplify()` to reduce gate count before export or `pipeline>0` to cut recorded stage crossings |
 | GroupSum | synthesizes as an integer adder tree; synthesis tools map efficiently to carry chains |
-| Timing | no registers in generated RTL; add pipeline registers in post-processing if needed |
+| Timing | `pipeline=0` emits combinational RTL; `pipeline>0` inserts synchronous register banks driven by `clk` |

@@ -15,6 +15,7 @@ set_export_mode(model)
 circuit = Circuit.from_model(model, input_shape=(1, 28, 28))
 circuit.simplify()
 circuit.write_verilog_code("circuit.v")
+circuit.write_verilog_code("circuit_p1.v", pipeline=1)
 ```
 
 ### 2. Generate test vectors
@@ -89,12 +90,14 @@ Common FPGA parts:
 After synthesis, `synthesis_reports/summary.txt` shows:
 
 - **LUTs** — Look-Up Tables used (primary logic resource)
-- **Flip-Flops** — registers; typically 0 for TorchLogix combinational circuits
+- **Flip-Flops** — registers; typically 0 for `pipeline=0`, non-zero when pipelining is enabled
 - **WNS** — Worst Negative Slack; positive = timing met
 - **Critical path** — combinational latency end-to-end
 
-TorchLogix circuits contain no registers, so the critical path delay is also
-the inference latency.
+With `pipeline=0`, TorchLogix circuits contain no registers, so the critical
+path delay is also the inference latency. With `pipeline>0`, the critical path
+per stage shrinks while end-to-end latency increases by the inserted pipeline
+depth.
 
 ---
 
@@ -110,6 +113,6 @@ are driven; re-run `circuit.simplify()` before `write_verilog_code`.
 **Very high LUT count** — expected for large circuits; call `circuit.simplify()`
 before export to prune dead gates.
 
-**Timing not met (negative WNS)** — for combinational logic this is
+**Timing not met (negative WNS)** — for combinational exports this is
 informational; the actual latency is the critical path delay, not the clock
-period.
+period. For pipelined exports, increase the clock period or pipeline depth.

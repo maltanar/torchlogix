@@ -65,4 +65,5 @@ scores = circuit(x_np, use_compiled=True)
 ```python
 circuit.write_c_code("circuit.c")          # self-contained C99, no dependencies
 circuit.write_verilog_code("circuit.v")    # combinational RTL module
+circuit.write_verilog_code("circuit_p1.v", pipeline=1)  # add one register bank per boundary
 ```

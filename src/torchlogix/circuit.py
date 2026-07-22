@@ -196,6 +196,8 @@ class Circuit:
     outputs:     list[int] = field(default_factory=list)   # ordered node IDs (gates or SumReduction)
     output_shape: list[int] = field(default_factory=list)
     sum_nodes:   list[SumReduction] = field(default_factory=list)
+    pipeline_boundary_origins: list[int] = field(default_factory=list)
+    pipeline_boundary_signals: list[list[int]] = field(default_factory=list)
 
     @property
     def _sum_by_id(self) -> dict[int, SumReduction]:
@@ -263,11 +265,29 @@ class Circuit:
         _output_chain: dict[str, list[int]] = {}
         # Maps SumReduction node_id -> SumReduction object for tau/beta mutation.
         _sum_by_chain_id: dict[int, SumReduction] = {}
+        gate_by_id: dict[int, Gate] = {}
+        buffer_origin: dict[str, int] = {}
+        boundary_by_origin: dict[int, list[int]] = {}
 
         nodes = list(gm.graph.nodes)
 
         def resolve(fx_node: torch.fx.Node) -> list[int]:
             return wire_map[fx_node.name]
+
+        def add_gate(op: GateOp, in0: int = -1, in1: int = -1, node_idx: int = -1) -> int:
+            nonlocal next_id
+            gate_id = next_id
+            gate = Gate(gate_id=gate_id, op=op, in0=in0, in1=in1, node_idx=node_idx)
+            circuit.gates.append(gate)
+            gate_by_id[gate_id] = gate
+            next_id += 1
+            return gate_id
+
+        def record_boundary(origin: int, signal_ids: list[int]) -> None:
+            if origin < 0 or not signal_ids:
+                return
+            if origin not in boundary_by_origin:
+                boundary_by_origin[origin] = list(signal_ids)
 
         # ------------------------------------------------------------------
         # Pass 1: find placeholder and seed wire_map with flat input indices
@@ -276,6 +296,7 @@ class Circuit:
             if node.op == 'placeholder':
                 wire_map[node.name] = list(range(n_inputs))
                 wire_map[f'__shape_{node.name}'] = list(input_shape)
+                buffer_origin[node.name] = -1
                 break
 
         # ------------------------------------------------------------------
@@ -306,10 +327,7 @@ class Circuit:
                     gate_ids = []
                     for b in flat:
                         op = GateOp.CONST_TRUE if b else GateOp.CONST_FALSE
-                        g = Gate(gate_id=next_id, op=op)
-                        circuit.gates.append(g)
-                        gate_ids.append(next_id)
-                        next_id += 1
+                        gate_ids.append(add_gate(op=op, node_idx=i))
                     wire_map[node.name] = gate_ids
                     wire_map[f'__shape_{node.name}'] = list(val.shape)
                 i += 1
@@ -371,7 +389,11 @@ class Circuit:
                     wire_map[node.name] = src_ids
                     wire_map[f'__shape_{node.name}'] = wire_map.get(
                         f'__shape_{src_node.name}', list(input_shape))
+                    if src_node.name in buffer_origin:
+                        buffer_origin[node.name] = buffer_origin[src_node.name]
                 else:
+                    if src_node.name in buffer_origin:
+                        record_boundary(buffer_origin[src_node.name], src_ids)
                     src_shape = wire_map.get(f'__shape_{src_node.name}', list(input_shape))
                     # Build the index tuple directly from idx_list, replacing None
                     # with slice(None).  Using the raw list avoids accidentally
@@ -398,6 +420,8 @@ class Circuit:
                         gathered  = id_tensor[tuple(index_args)]
                         wire_map[node.name] = [int(x) for x in gathered.flatten().tolist()]
                         wire_map[f'__shape_{node.name}'] = list(gathered.shape)
+                        if src_node.name in buffer_origin:
+                            buffer_origin[node.name] = buffer_origin[src_node.name]
 
                 i += 1
                 continue
@@ -420,6 +444,8 @@ class Circuit:
                 selected  = id_tensor.select(dim, idx)
                 wire_map[node.name] = [int(x) for x in selected.flatten().tolist()]
                 wire_map[f'__shape_{node.name}'] = list(selected.shape)
+                if node.args[0].name in buffer_origin:
+                    buffer_origin[node.name] = buffer_origin[node.args[0].name]
                 i += 1
                 continue
 
@@ -433,6 +459,8 @@ class Circuit:
                     shape_key = f'__shape_{src_node.name}'
                     if shape_key in wire_map:
                         wire_map[f'__shape_{node.name}'] = wire_map[shape_key]
+                    if src_node.name in buffer_origin:
+                        buffer_origin[node.name] = buffer_origin[src_node.name]
                 i += 1
                 continue
 
@@ -451,6 +479,8 @@ class Circuit:
                     new_shape.insert(dim, 1)
                     wire_map[node.name] = src_ids
                     wire_map[f'__shape_{node.name}'] = new_shape
+                    if src_node.name in buffer_origin:
+                        buffer_origin[node.name] = buffer_origin[src_node.name]
                 i += 1
                 continue
 
@@ -468,6 +498,8 @@ class Circuit:
                     new_shape = [s for idx, s in enumerate(src_shape) if idx != dim or s != 1]
                     wire_map[node.name] = src_ids
                     wire_map[f'__shape_{node.name}'] = new_shape
+                    if src_node.name in buffer_origin:
+                        buffer_origin[node.name] = buffer_origin[src_node.name]
                 i += 1
                 continue
 
@@ -484,6 +516,8 @@ class Circuit:
                     flipped   = torch.flip(id_tensor, dims=dims)
                     wire_map[node.name] = [int(x) for x in flipped.flatten().tolist()]
                     wire_map[f'__shape_{node.name}'] = list(flipped.shape)
+                    if src_node.name in buffer_origin:
+                        buffer_origin[node.name] = buffer_origin[src_node.name]
                 i += 1
                 continue
 
@@ -496,6 +530,8 @@ class Circuit:
                 new_shape = node.args[1]
                 wire_map[node.name] = src_ids
                 wire_map[f'__shape_{node.name}'] = list(new_shape)
+                if node.args[0].name in buffer_origin:
+                    buffer_origin[node.name] = buffer_origin[node.args[0].name]
                 i += 1
                 continue
 
@@ -512,6 +548,8 @@ class Circuit:
                     permuted  = id_tensor.permute(dims)
                     wire_map[node.name] = [int(x) for x in permuted.contiguous().flatten().tolist()]
                     wire_map[f'__shape_{node.name}'] = list(permuted.shape)
+                    if src_node.name in buffer_origin:
+                        buffer_origin[node.name] = buffer_origin[src_node.name]
                 i += 1
                 continue
 
@@ -530,6 +568,8 @@ class Circuit:
                 flattened = id_tensor.flatten(start_dim, end_dim)
                 wire_map[node.name] = [int(x) for x in flattened.flatten().tolist()]
                 wire_map[f'__shape_{node.name}'] = list(flattened.shape)
+                if node.args[0].name in buffer_origin:
+                    buffer_origin[node.name] = buffer_origin[node.args[0].name]
                 i += 1
                 continue
 
@@ -549,6 +589,8 @@ class Circuit:
                 unfolded  = id_tensor.unfold(dim, size, step)
                 wire_map[node.name] = [int(x) for x in unfolded.flatten().tolist()]
                 wire_map[f'__shape_{node.name}'] = list(unfolded.shape)
+                if node.args[0].name in buffer_origin:
+                    buffer_origin[node.name] = buffer_origin[node.args[0].name]
                 i += 1
                 continue
 
@@ -568,6 +610,8 @@ class Circuit:
                     # No-op: zero-size padding
                     wire_map[node.name] = src_ids
                     wire_map[f'__shape_{node.name}'] = list(src_shape)
+                    if node.args[0].name in buffer_origin:
+                        buffer_origin[node.name] = buffer_origin[node.args[0].name]
                 else:
                     value    = float(node.args[3]) if len(node.args) > 3 else 0.0
                     const_op = GateOp.CONST_TRUE if value != 0.0 else GateOp.CONST_FALSE
@@ -577,14 +621,13 @@ class Circuit:
                     result_ids = []
                     for v in padded.flatten().tolist():
                         if v < 0:
-                            g = Gate(gate_id=next_id, op=const_op)
-                            circuit.gates.append(g)
-                            result_ids.append(next_id)
-                            next_id += 1
+                            result_ids.append(add_gate(op=const_op, node_idx=i))
                         else:
                             result_ids.append(int(v))
                     wire_map[node.name] = result_ids
                     wire_map[f'__shape_{node.name}'] = list(padded.shape)
+                    if node.args[0].name in buffer_origin:
+                        buffer_origin[node.name] = buffer_origin[node.args[0].name]
                 i += 1
                 continue
 
@@ -610,6 +653,8 @@ class Circuit:
                 sliced = id_tensor[tuple(slices)]
                 wire_map[node.name] = [int(x) for x in sliced.flatten().tolist()]
                 wire_map[f'__shape_{node.name}'] = list(sliced.shape)
+                if node.args[0].name in buffer_origin:
+                    buffer_origin[node.name] = buffer_origin[node.args[0].name]
                 i += 1
                 continue
 
@@ -659,6 +704,10 @@ class Circuit:
                         catted = torch.cat(id_tensors, dim=dim)
                         wire_map[node.name] = [int(x) for x in catted.flatten().tolist()]
                         wire_map[f'__shape_{node.name}'] = list(catted.shape)
+                        input_origins = [buffer_origin[n2.name] for n2 in cat_nodes
+                                         if isinstance(n2, torch.fx.Node) and n2.name in buffer_origin]
+                        if input_origins:
+                            buffer_origin[node.name] = max(input_origins)
                 i += 1
                 continue
 
@@ -674,6 +723,8 @@ class Circuit:
                     shape = wire_map.get(f'__shape_{src.name}')
                     if shape is not None:
                         wire_map[f'__shape_{node.name}'] = list(shape)
+                    if src.name in buffer_origin:
+                        buffer_origin[node.name] = buffer_origin[src.name]
                 i += 1
                 continue
 
@@ -689,6 +740,7 @@ class Circuit:
                         n *= d
                     wire_map[node.name] = [-1] * n
                     wire_map[f'__shape_{node.name}'] = list(ref_shape)
+                    buffer_origin[node.name] = i
                 i += 1
                 continue
 
@@ -716,10 +768,7 @@ class Circuit:
                     else:
                         gate_ids = []
                         for _ in x_ids:
-                            g = Gate(gate_id=next_id, op=const_op)
-                            circuit.gates.append(g)
-                            gate_ids.append(next_id)
-                            next_id += 1
+                            gate_ids.append(add_gate(op=const_op, node_idx=i))
                         wire_map[node.name] = gate_ids
                         wire_map[f'__shape_{node.name}'] = shape
                 i += 1
@@ -763,6 +812,13 @@ class Circuit:
                         break
                     wire_map[node.name] = [int(x) for x in result_ids]
                     wire_map[f'__shape_{node.name}'] = result_shape
+                    if result_arg.name in buffer_origin:
+                        origin = buffer_origin[result_arg.name]
+                        buffer_origin[node.name] = origin
+                        for gid in value_ids:
+                            gate = gate_by_id.get(gid)
+                            if gate is not None:
+                                gate.node_idx = origin
                 i += 1
                 continue
 
@@ -787,14 +843,21 @@ class Circuit:
                     b_ids   = resolve(b_node_arg)
                     gate_op = _DIRECT_BINARY_GATE[tgt]
                     shape   = wire_map.get(f'__shape_{a_node_arg.name}', [len(a_ids)])
+                    input_origins = [buffer_origin[name] for name in (a_node_arg.name, b_node_arg.name)
+                                     if name in buffer_origin and buffer_origin[name] >= 0]
+                    if input_origins and len(set(input_origins)) == 1:
+                        record_boundary(input_origins[0], a_ids)
+                        origin = i
+                    elif input_origins:
+                        origin = max(input_origins)
+                    else:
+                        origin = i
                     gate_ids = []
                     for a_id, b_id in zip(a_ids, b_ids):
-                        g = Gate(gate_id=next_id, op=gate_op, in0=a_id, in1=b_id)
-                        circuit.gates.append(g)
-                        gate_ids.append(next_id)
-                        next_id += 1
+                        gate_ids.append(add_gate(op=gate_op, in0=a_id, in1=b_id, node_idx=origin))
                     wire_map[node.name] = gate_ids
                     wire_map[f'__shape_{node.name}'] = list(shape)
+                    buffer_origin[node.name] = origin
                 i += 1
                 continue
 
@@ -803,14 +866,15 @@ class Circuit:
                 if isinstance(a_node_arg, torch.fx.Node) and a_node_arg.name in wire_map:
                     a_ids = resolve(a_node_arg)
                     shape = wire_map.get(f'__shape_{a_node_arg.name}', [len(a_ids)])
+                    origin = buffer_origin.get(a_node_arg.name, i)
+                    if origin < 0:
+                        origin = i
                     gate_ids = []
                     for a_id in a_ids:
-                        g = Gate(gate_id=next_id, op=GateOp.NOT, in0=a_id)
-                        circuit.gates.append(g)
-                        gate_ids.append(next_id)
-                        next_id += 1
+                        gate_ids.append(add_gate(op=GateOp.NOT, in0=a_id, node_idx=origin))
                     wire_map[node.name] = gate_ids
                     wire_map[f'__shape_{node.name}'] = list(shape)
+                    buffer_origin[node.name] = origin
                 i += 1
                 continue
 
@@ -824,10 +888,7 @@ class Circuit:
                     else GateOp.CONST_TRUE
                 gate_ids = []
                 for _ in ref_ids:
-                    g = Gate(gate_id=next_id, op=op)
-                    circuit.gates.append(g)
-                    gate_ids.append(next_id)
-                    next_id += 1
+                    gate_ids.append(add_gate(op=op, node_idx=i))
                 wire_map[node.name] = gate_ids
                 src_shape = wire_map.get(f'__shape_{node.args[0].name}', [len(ref_ids)])
                 wire_map[f'__shape_{node.name}'] = src_shape
@@ -843,6 +904,8 @@ class Circuit:
                 x_node = node.args[0]
                 dim_list = node.args[1]
                 if isinstance(x_node, torch.fx.Node) and x_node.name in wire_map:
+                    if x_node.name in buffer_origin:
+                        record_boundary(buffer_origin[x_node.name], resolve(x_node))
                     x_shape = wire_map.get(f'__shape_{x_node.name}', [])
                     last_dim = len(x_shape) - 1
                     if dim_list in ([-1], [last_dim]) and len(x_shape) >= 2:
@@ -870,6 +933,8 @@ class Circuit:
                     shape = wire_map.get(f'__shape_{src.name}')
                     if shape is not None:
                         wire_map[f'__shape_{node.name}'] = list(shape)
+                    if src.name in buffer_origin:
+                        buffer_origin[node.name] = buffer_origin[src.name]
                     if src.name in _output_chain:
                         _output_chain[node.name] = _output_chain[src.name]
                 elif isinstance(src, torch.fx.Node) and src.name in _output_chain:
@@ -907,6 +972,10 @@ class Circuit:
             # ---- skip everything else (sym_size, asserts, etc.) ----
             i += 1
 
+        for origin, signal_ids in sorted(boundary_by_origin.items()):
+            circuit.pipeline_boundary_origins.append(origin)
+            circuit.pipeline_boundary_signals.append(signal_ids)
+
         return circuit
     
 
@@ -924,6 +993,32 @@ class Circuit:
             after_sr    = sum(len(sr.input_ids) for sr in self.sum_nodes)
             if after_gates == before_gates and after_sr == before_sr:
                 break
+
+
+    def _remap_pipeline_boundaries(self, remap_fn, live_gate_ids: set[int] | None = None) -> None:
+        if not self.pipeline_boundary_signals:
+            return
+
+        new_signals: list[list[int]] = []
+        for signals in self.pipeline_boundary_signals:
+            remapped = []
+            seen = set()
+            for gid in signals:
+                mapped = remap_fn(gid)
+                if mapped < self.n_inputs:
+                    continue
+                if live_gate_ids is not None and mapped not in live_gate_ids:
+                    continue
+                if mapped not in seen:
+                    remapped.append(mapped)
+                    seen.add(mapped)
+            new_signals.append(remapped)
+
+        keep_mask = [bool(sigs) for sigs in new_signals]
+        self.pipeline_boundary_signals = [s for s, keep in zip(new_signals, keep_mask) if keep]
+        self.pipeline_boundary_origins = [
+            o for o, keep in zip(self.pipeline_boundary_origins, keep_mask) if keep
+        ]
 
     def fuse_not_inputs(self) -> None:
         """Absorb NOT gates into their single downstream consumer.
@@ -1014,6 +1109,8 @@ class Circuit:
                 queue.append(g.in0)
             if g.in1 >= 0:
                 queue.append(g.in1)
+
+        self._remap_pipeline_boundaries(lambda gid: gid, live_gate_ids=visited)
 
         self.gates = [g for g in self.gates if g.gate_id in visited]
 
@@ -1128,6 +1225,8 @@ class Circuit:
 
             return gid
 
+        self._remap_pipeline_boundaries(resolve)
+
         # ------------------------------------------------------------------
         # Rewrite all fanins
         # ------------------------------------------------------------------
@@ -1215,6 +1314,8 @@ class Circuit:
                 gid = nxt
 
             return gid
+
+        self._remap_pipeline_boundaries(resolve)
 
         # ------------------------------------------------------------------
         # Rewrite fanins
@@ -1705,6 +1806,8 @@ void circuit_bench_bool(
             'input_shape': self.input_shape,
             'outputs': self.outputs,
             'output_shape': self.output_shape,
+            'pipeline_boundary_origins': self.pipeline_boundary_origins,
+            'pipeline_boundary_signals': self.pipeline_boundary_signals,
             'gates': [
                 {
                     'gate_id': g.gate_id,
@@ -1732,6 +1835,8 @@ void circuit_bench_bool(
         circuit = cls(n_inputs=data['n_inputs'], input_shape=data['input_shape'])
         circuit.outputs = data.get('outputs', [])
         circuit.output_shape = data.get('output_shape', [])
+        circuit.pipeline_boundary_origins = data.get('pipeline_boundary_origins', [])
+        circuit.pipeline_boundary_signals = data.get('pipeline_boundary_signals', [])
         for g_data in data.get('gates', []):
             g = Gate(
                 gate_id=g_data['gate_id'],
@@ -1763,22 +1868,46 @@ void circuit_bench_bool(
         return cls.from_dict(data)
 
 
-    def get_verilog_code(self, inline_single_use: bool = False) -> str:
+    def get_verilog_code(self, inline_single_use: bool = False, pipeline: int = 0) -> str:
         """
         Generate a Verilog module that implements the circuit.
 
         Each gate becomes a continuous assignment:
             wire g<id> = <expr>;
-        Outputs are assigned to an output bus:
-            assign out[k] = <expr>;
 
         inline_single_use=True: single-use gates are folded into their parent
-        expression rather than named wires (same semantics as in emit_c).
+        expression rather than named wires.
+
+        pipeline controls how many register banks are inserted on each recorded
+        inter-stage boundary. pipeline=0 keeps the module combinational.
+
+        For pipeline>0, the module includes:
+        - registered input (`inp_r`)
+        - registered output (`out` or `scores_flat`)
+        - `inp_valid` / `out_valid` handshake signals
         """
+        if pipeline < 0:
+            raise ValueError("pipeline must be >= 0")
+
+        pipelined_mode = pipeline > 0
+
         n_in      = self.n_inputs
         n_total   = len(self.outputs)
         sum_by_id = self._sum_by_id
         gate_by_id = {g.gate_id: g for g in self.gates}
+        boundary_pairs = [
+            (origin, signals)
+            for origin, signals in zip(self.pipeline_boundary_origins, self.pipeline_boundary_signals)
+            if signals
+        ]
+        boundary_signal_set = {gid for _, signals in boundary_pairs for gid in signals}
+        boundary_signals_ordered = [signals for _, signals in boundary_pairs]
+        boundary_index_by_gid = {
+            gid: idx
+            for idx, signals in enumerate(boundary_signals_ordered)
+            for gid in signals
+        }
+        max_origin = max((g.node_idx for g in self.gates), default=-1) + 1
 
         # Build raw[] layout for sum reductions (same as get_c_code)
         raw_ids: list[int] = []
@@ -1791,8 +1920,8 @@ void circuit_bench_bool(
                 sum_raw_offset_v[out_id] = (start, len(raw_ids))
         n_raw = len(raw_ids)
 
-        red_outs  = [sum_by_id[oid] for oid in self.outputs if oid in sum_by_id]
-        has_red   = bool(red_outs)
+        red_outs = [sum_by_id[oid] for oid in self.outputs if oid in sum_by_id]
+        has_red = bool(red_outs)
 
         # ---- use-count for optional inlining --------------------------------
         use_count: dict[int, int] = {}
@@ -1812,35 +1941,117 @@ void circuit_bench_bool(
                     use_count[out_id] = use_count.get(out_id, 0) + 1
 
         def should_inline(gid: int) -> bool:
-            return inline_single_use and use_count.get(gid, 0) <= 1
+            return inline_single_use and gid not in boundary_signal_set and use_count.get(gid, 0) <= 1
 
-        _expr_cache: dict[int, str] = {}
+        stage_starts = sorted({g.node_idx for g in self.gates if g.node_idx >= 0})
 
-        def vexpr(gid: int) -> str:
+        def stage_origin_for_node_idx(node_idx: int) -> int:
+            stage_origin = -1
+            for origin in stage_starts:
+                if origin > node_idx:
+                    break
+                stage_origin = origin
+            return stage_origin
+
+        gate_stage_origin = {
+            g.gate_id: stage_origin_for_node_idx(g.node_idx)
+            for g in self.gates
+        }
+
+        def crosses_boundary(dep_gid: int, consumer_origin: int | None) -> bool:
+            if dep_gid < n_in or consumer_origin is None or dep_gid not in boundary_index_by_gid:
+                return False
+            producer_origin = gate_stage_origin.get(dep_gid, -1)
+            return producer_origin >= 0 and consumer_origin > producer_origin
+
+        def boundary_ref(gid: int) -> str:
+            boundary_idx = boundary_index_by_gid[gid]
+            signal_idx = boundary_signals_ordered[boundary_idx].index(gid)
+            return f"pipe_{boundary_idx}_r{pipeline}[{signal_idx}]"
+
+        crossing_cache: dict[int, int] = {}
+
+        def boundary_crossings_to_node(gid: int) -> int:
+            if gid < n_in:
+                return 0
+            if gid in crossing_cache:
+                return crossing_cache[gid]
+            g = gate_by_id.get(gid)
+            if g is None:
+                crossing_cache[gid] = 0
+                return 0
+            consumer_origin = gate_stage_origin.get(gid, -1)
+            candidates = []
+            for dep in (g.in0, g.in1):
+                if dep < 0:
+                    continue
+                c = boundary_crossings_to_node(dep)
+                if dep >= n_in and crosses_boundary(dep, consumer_origin):
+                    c += 1
+                candidates.append(c)
+            crossing_cache[gid] = max(candidates, default=0)
+            return crossing_cache[gid]
+
+        max_boundary_crossings = 0
+        if has_red:
+            for out_id in self.outputs:
+                sr = sum_by_id.get(out_id)
+                if sr is not None:
+                    for gid in sr.input_ids:
+                        c = boundary_crossings_to_node(gid)
+                        if gid >= n_in and crosses_boundary(gid, max_origin):
+                            c += 1
+                        max_boundary_crossings = max(max_boundary_crossings, c)
+                else:
+                    if out_id >= n_in:
+                        c = boundary_crossings_to_node(out_id)
+                        if crosses_boundary(out_id, max_origin):
+                            c += 1
+                        max_boundary_crossings = max(max_boundary_crossings, c)
+        else:
+            for out_id in self.outputs:
+                if out_id >= n_in:
+                    max_boundary_crossings = max(max_boundary_crossings, boundary_crossings_to_node(out_id))
+
+        valid_latency = 0
+        if pipelined_mode:
+            # Input register + output register + register banks on crossed boundaries
+            valid_latency = 2 + pipeline * max_boundary_crossings
+
+        _expr_cache: dict[tuple[int, int | None], str] = {}
+
+        def vexpr(gid: int, consumer_origin: int | None = None) -> str:
             """Return a Verilog expression for gate gid (inlined if single-use)."""
             if gid < 0:
                 return "1'b0"
             if gid < n_in:
+                if pipelined_mode:
+                    return f"inp_r[{gid}]"
                 return f"inp[{gid}]"
+            if pipelined_mode and crosses_boundary(gid, consumer_origin):
+                return boundary_ref(gid)
             if not should_inline(gid):
                 return f"g{gid}"
-            if gid in _expr_cache:
-                return _expr_cache[gid]
+            cache_key = (gid, consumer_origin)
+            if cache_key in _expr_cache:
+                return _expr_cache[cache_key]
             g = gate_by_id.get(gid)
             if g is None:
                 return f"g{gid}"
-            a = vexpr(g.in0)
-            b = vexpr(g.in1)
+            inner_consumer = gate_stage_origin.get(gid, -1)
+            a = vexpr(g.in0, inner_consumer)
+            b = vexpr(g.in1, inner_consumer)
             result = GATE_OP_VERILOG[g.op].format(a=a, b=b)
-            _expr_cache[gid] = result
+            _expr_cache[cache_key] = result
             return result
 
         gate_lines = []
         for gate in self.gates:
             if should_inline(gate.gate_id):
                 continue
-            a = vexpr(gate.in0)
-            b = vexpr(gate.in1)
+            consumer_origin = gate_stage_origin.get(gate.gate_id, -1)
+            a = vexpr(gate.in0, consumer_origin)
+            b = vexpr(gate.in1, consumer_origin)
             expr = GATE_OP_VERILOG[gate.op].format(a=a, b=b)
             gate_lines.append(f"    wire g{gate.gate_id} = {expr};")
         gates_str = "\n".join(gate_lines)
@@ -1851,14 +2062,13 @@ void circuit_bench_bool(
             reduction_comment = (
                 f"// {n_total} output(s) - scores_flat = {n_total} x {score_bits}-bit values\n"
             )
-            module_port = f"    output reg  [{n_total * score_bits - 1}:0] scores_flat"
 
-            # Build always block body: one entry per output in order
+            target_bus = "scores_comb" if pipelined_mode else "scores_flat"
             sv_lines = []
             sv_vars = set()
             for j, out_id in enumerate(self.outputs):
                 sr = sum_by_id.get(out_id)
-                slot = f"scores_flat[{j}*{score_bits} +: {score_bits}]"
+                slot = f"{target_bus}[{j}*{score_bits} +: {score_bits}]"
                 if sr is not None:
                     sv_vars.add(f"s_{j}")
                     start, end = sum_raw_offset_v[out_id]
@@ -1873,38 +2083,106 @@ void circuit_bench_bool(
                             f"        {slot} = s_{j};"
                         )
                 else:
-                    sv_lines.append(f"        {slot} = {vexpr(out_id)};")
+                    sv_lines.append(f"        {slot} = {vexpr(out_id, max_origin)};")
 
             sum_vars_decl = ", ".join(sorted(sv_vars)) + ", i" if sv_vars else "i"
             sum_body = "\n".join(sv_lines)
 
             if n_raw > 0:
                 raw_assigns = "\n".join(
-                    f"    assign raw[{k}] = {vexpr(gid)};"
+                    f"    assign raw[{k}] = {vexpr(gid, max_origin)};"
                     for k, gid in enumerate(raw_ids)
                 )
                 raw_section = f"\n    // --- raw inputs to sum reductions ---\n    wire [{n_raw - 1}:0] raw;\n{raw_assigns}\n"
             else:
                 raw_section = ""
 
-            output_section = f"""
+            if pipelined_mode:
+                comb_header = f"\n    reg [{n_total * score_bits - 1}:0] scores_comb;"
+            else:
+                comb_header = ""
+            output_logic = f"""
 {raw_section}
-    // --- outputs (behavioral - synthesizer maps to carry chain) ---
+    // --- outputs (behavioral - synthesizer maps to carry chain) ---{comb_header}
     integer {sum_vars_decl};
     always @(*) begin
 {sum_body}
     end"""
         else:
             reduction_comment = ""
-            module_port = f"    output wire [{n_total - 1}:0] out"
-            out_assigns = "\n".join(
-                f"    assign out[{k}] = {vexpr(out_id)};"
-                for k, out_id in enumerate(self.outputs)
-            )
-            output_section = f"""
+            if pipelined_mode:
+                out_assigns = "\n".join(
+                    f"    assign out_comb[{k}] = {vexpr(out_id, gate_stage_origin.get(out_id, -1))};"
+                    for k, out_id in enumerate(self.outputs)
+                )
+                output_logic = f"""
+
+    // --- outputs ---
+    wire [{n_total - 1}:0] out_comb;
+{out_assigns}"""
+            else:
+                out_assigns = "\n".join(
+                    f"    assign out[{k}] = {vexpr(out_id, gate_stage_origin.get(out_id, -1))};"
+                    for k, out_id in enumerate(self.outputs)
+                )
+                output_logic = f"""
 
     // --- outputs ---
 {out_assigns}"""
+
+        sequential_logic = ""
+        if pipelined_mode:
+            reg_decls = [f"    reg  [{n_in - 1}:0] inp_r;"]
+            reg_assigns = []
+            for boundary_idx, (_, signals) in enumerate(boundary_pairs):
+                width = len(signals)
+                reg_decls.append(f"    wire [{width - 1}:0] pipe_{boundary_idx}_src;")
+                for depth in range(1, pipeline + 1):
+                    reg_decls.append(f"    reg  [{width - 1}:0] pipe_{boundary_idx}_r{depth};")
+                reg_assigns.extend(
+                    f"    assign pipe_{boundary_idx}_src[{signal_idx}] = {vexpr(gid, gate_stage_origin.get(gid, -1))};"
+                    for signal_idx, gid in enumerate(signals)
+                )
+            reg_decls.append(f"    reg  [{valid_latency - 1}:0] valid_pipe;")
+
+            seq_lines = ["        inp_r <= inp;"]
+            for boundary_idx, _ in enumerate(boundary_pairs):
+                seq_lines.append(f"        pipe_{boundary_idx}_r1 <= pipe_{boundary_idx}_src;")
+                for depth in range(2, pipeline + 1):
+                    seq_lines.append(
+                        f"        pipe_{boundary_idx}_r{depth} <= pipe_{boundary_idx}_r{depth - 1};"
+                    )
+            if has_red:
+                seq_lines.append("        scores_flat <= scores_comb;")
+            else:
+                seq_lines.append("        out <= out_comb;")
+            seq_lines.append("        valid_pipe[0] <= inp_valid;")
+            for idx in range(1, valid_latency):
+                seq_lines.append(f"        valid_pipe[{idx}] <= valid_pipe[{idx - 1}];")
+            seq_lines.append(f"        out_valid <= valid_pipe[{valid_latency - 2}];")
+
+            sequential_logic = (
+                "\n\n    // --- pipeline registers and valid tracking ---\n"
+                + "\n".join(reg_decls)
+                + ("\n" + "\n".join(reg_assigns) if reg_assigns else "")
+                + "\n\n    always @(posedge clk) begin\n"
+                + "\n".join(seq_lines)
+                + "\n    end"
+            )
+
+        port_lines = []
+        if pipelined_mode:
+            port_lines.append("    input  wire clk")
+            port_lines.append("    input  wire inp_valid")
+        port_lines.append(f"    input  wire [{n_in - 1}:0] inp")
+        if has_red:
+            port_lines.append(f"    output reg  [{n_total * score_bits - 1}:0] scores_flat")
+        else:
+            out_kind = "reg" if pipelined_mode else "wire"
+            port_lines.append(f"    output {out_kind} [{n_total - 1}:0] out")
+        if pipelined_mode:
+            port_lines.append("    output reg  out_valid")
+        module_ports = ",\n".join(port_lines)
 
         return f"""\
 // Auto-generated by circuit_ir - do not edit
@@ -1913,10 +2191,9 @@ void circuit_bench_bool(
 // n_inputs={n_in}  n_gates={len(self.gates)}  n_outputs={n_total}
 
 {reduction_comment}module circuit (
-    input  wire [{n_in - 1}:0] inp,
-{module_port}
+{module_ports}
 );
-{gates_str}{output_section}
+{gates_str}{output_logic}{sequential_logic}
 
 endmodule"""
 
@@ -1929,11 +2206,13 @@ endmodule"""
         with open(path, 'w') as f:
             f.write(c_code)
 
-    def write_verilog_code(self, path: str) -> None:
+    def write_verilog_code(self, path: str, pipeline: int = 0) -> None:
         """
         Write the generated Verilog code to a file.
+
+        pipeline is forwarded to get_verilog_code().
         """
-        verilog_code = self.get_verilog_code()
+        verilog_code = self.get_verilog_code(pipeline=pipeline)
         with open(path, 'w') as f:
             f.write(verilog_code)
 

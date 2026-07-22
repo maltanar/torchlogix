@@ -3,9 +3,13 @@ import subprocess
 import ctypes
 import sys
 import tempfile
+import re
+import pathlib
+import shutil
 import torch
 import torch.nn as nn
 from torchlogix import Circuit
+from torchlogix.circuit import GateOp
 from torchlogix.utils import set_export_mode
 from torchlogix.layers import (
     GroupSum,
@@ -167,6 +171,164 @@ def test_circuit_simplifications(model_cls, simplification):
     simplification(circuit)
     preds_after = circuit(x)
     assert torch.equal(preds_before, preds_after), f"Predictions differ after {simplification.__name__}!"
+
+
+@pytest.mark.parametrize("model_cls", [DenseModel, ConvModel, BranchModel, AnyLogicModel])
+def test_gate_node_idx_populated_and_preserved(model_cls):
+    circuit = Circuit.from_model(model_cls(), input_shape=model_cls().input_shape)
+
+    assert circuit.gates, "Expected circuit to contain gates"
+    assert all(g.node_idx >= 0 for g in circuit.gates)
+    assert len({g.node_idx for g in circuit.gates}) >= 2
+
+    circuit.simplify()
+    assert circuit.gates, "Expected simplified circuit to retain gates"
+    assert all(g.node_idx >= 0 for g in circuit.gates)
+
+
+def test_dense_pipeline_boundary_metadata_and_verilog_registers():
+    circuit = Circuit.from_model(DenseModel(), input_shape=DenseModel().input_shape)
+    circuit.simplify()
+
+    assert circuit.pipeline_boundary_origins
+    assert circuit.pipeline_boundary_signals
+
+    verilog = circuit.get_verilog_code(pipeline=1)
+    assert "input  wire clk" in verilog
+    assert "input  wire inp_valid" in verilog
+    assert "output reg  out_valid" in verilog
+    assert "reg  [" in verilog and " inp_r;" in verilog
+    assert "always @(posedge clk)" in verilog
+    assert re.search(r"reg\s+\[[0-9]+:0\] pipe_0_r1;", verilog)
+
+
+def test_pipeline_zero_preserves_combinational_interface():
+    circuit = Circuit.from_model(DenseModel(), input_shape=DenseModel().input_shape)
+    circuit.simplify()
+
+    verilog = circuit.get_verilog_code(pipeline=0)
+    assert "input  wire clk" not in verilog
+    assert "inp_valid" not in verilog
+    assert "out_valid" not in verilog
+    assert "always @(posedge clk)" not in verilog
+
+
+def test_group_sum_pipeline_verilog_keeps_scores_interface():
+    circuit = Circuit.from_model(ConvModel(), input_shape=ConvModel().input_shape)
+    circuit.simplify()
+
+    verilog = circuit.get_verilog_code(pipeline=1)
+    assert "scores_flat" in verilog
+    assert "inp_valid" in verilog
+    assert "out_valid" in verilog
+    assert "always @(posedge clk)" in verilog
+
+
+@pytest.mark.parametrize("model_cls", [DenseModel, ConvModel])
+def test_pipeline_metadata_survives_json_roundtrip(model_cls):
+    circuit = Circuit.from_model(model_cls(), input_shape=model_cls().input_shape)
+    circuit.simplify()
+
+    with tempfile.NamedTemporaryFile(suffix=".json") as tmp_file:
+        circuit.write_json(tmp_file.name)
+        circuit_loaded = Circuit.from_json_file(tmp_file.name)
+
+    assert circuit_loaded.pipeline_boundary_origins == circuit.pipeline_boundary_origins
+    assert circuit_loaded.pipeline_boundary_signals == circuit.pipeline_boundary_signals
+
+
+def _pack_bool_rows(arr):
+    packed = []
+    for row in arr:
+        value = 0
+        for bit_idx, bit in enumerate(row):
+            if bit:
+                value |= (1 << bit_idx)
+        packed.append(value)
+    return packed
+
+
+@pytest.mark.skipif(shutil.which("verilator") is None, reason="verilator not installed")
+def test_verilog_pipeline_functional_latency():
+    model = nn.Sequential(
+        LogicDense(8, 16, parametrization="raw", parametrization_kwargs={"weight_init": "random"}),
+        LogicDense(16, 8, parametrization="raw", parametrization_kwargs={"weight_init": "random"}),
+    )
+    set_export_mode(model)
+    circuit = Circuit.from_model(model, input_shape=(8,))
+    circuit.simplify()
+
+    # If no boundaries were recorded there is nothing to pipeline-test here.
+    if not circuit.pipeline_boundary_signals:
+        pytest.skip("No pipeline boundaries recorded for this circuit")
+
+    pipeline_depth = 1
+    verilog = circuit.get_verilog_code(pipeline=pipeline_depth)
+
+    n_samples = 48
+    x0 = torch.randint(0, 2, (1, 8), dtype=torch.bool)
+    x = x0.repeat(n_samples, 1)
+    input_words = _pack_bool_rows(x.numpy())
+
+    tail_cycles = max(32, 4 * pipeline_depth * max(1, len(circuit.pipeline_boundary_signals)))
+    testbench = f"""
+#include \"Vcircuit.h\"
+#include \"verilated.h\"
+#include <cstdint>
+#include <cstdio>
+
+static const uint8_t in_words[{n_samples}] = {{ {", ".join(str(v) for v in input_words)} }};
+int main(int argc, char** argv) {{
+    Verilated::commandArgs(argc, argv);
+    Vcircuit dut;
+    dut.clk = 0;
+    dut.inp_valid = 0;
+    dut.inp = 0;
+
+    const int total_cycles = {n_samples} + {tail_cycles};
+    for (int t = 0; t < total_cycles; t++) {{
+        if (t < {n_samples}) {{
+            dut.inp = in_words[t];
+            dut.inp_valid = 1;
+        }} else {{
+            dut.inp = 0;
+            dut.inp_valid = 0;
+        }}
+
+        dut.clk = 0;
+        dut.eval();
+        dut.clk = 1;
+        dut.eval();
+        if (dut.out_valid) {{
+            uint8_t got = dut.out & 0xFF;
+            std::printf("%u\\n", (unsigned)got);
+        }}
+    }}
+
+    return 0;
+}}
+"""
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp = pathlib.Path(tmpdir)
+        (tmp / "circuit.v").write_text(verilog)
+        (tmp / "tb.cpp").write_text(testbench)
+
+        build = subprocess.run(
+            ["verilator", "--cc", "circuit.v", "--exe", "tb.cpp", "--build", "--Mdir", "obj_dir", "-Wno-fatal"],
+            cwd=tmpdir,
+            capture_output=True,
+            text=True,
+        )
+        assert build.returncode == 0, build.stderr
+
+        run = subprocess.run(["./obj_dir/Vcircuit"], cwd=tmpdir, capture_output=True, text=True)
+        assert run.returncode == 0, run.stdout + "\n" + run.stderr
+
+    got_words = [int(line.strip()) for line in run.stdout.splitlines() if line.strip()]
+    assert len(got_words) >= n_samples, "Not enough valid outputs were produced"
+    tail = got_words[-8:]
+    assert len(set(tail)) == 1, "Expected stable output tail for repeated constant inputs"
 
 
 @pytest.mark.parametrize("model_cls", [ConvModel, BranchModel])

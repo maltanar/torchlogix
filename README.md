@@ -68,6 +68,7 @@ The graph-based IR of a `Circuit` can be simplified and emit `C` and `Verilog` c
 circuit.simplify()  # removes dead code, folds constants, does dedup...
 circuit.get_c_code()
 circuit.get_verilog_code()
+circuit.get_verilog_code(pipeline=1)  # insert one register bank on each recorded stage boundary
 ```
 
 The full training- and evaluation of the model above is demonstrated in the example notebook [examples/mnist_example.ipynb](examples/mnist_example.ipynb).

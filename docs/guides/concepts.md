@@ -508,9 +508,12 @@ compiler; no Python or PyTorch needed at runtime.
 
 ```python
 verilog = circuit.get_verilog_code()
+verilog_p1 = circuit.get_verilog_code(pipeline=1)
 ```
 
-Produces a combinational `module circuit(input wire [N-1:0] inp, ...)`.
+Produces a combinational `module circuit(input wire [N-1:0] inp, ...)` by default.
+When `pipeline > 0`, the exporter adds a `clk` input and inserts that many
+register banks on each recorded stage boundary.
 For models with `GroupSum`, outputs are packed integers in `scores_flat`.
 See the [Hardware Deployment Guide](hardware_deployment.md) for how to
 simulate with Verilator and synthesize for FPGAs.
