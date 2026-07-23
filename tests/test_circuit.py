@@ -5,6 +5,7 @@ import sys
 import tempfile
 import torch
 import torch.nn as nn
+from torch.fx.experimental.proxy_tensor import make_fx
 from torchlogix import Circuit
 from torchlogix.utils import set_export_mode
 from torchlogix.layers import (
@@ -115,6 +116,25 @@ class AnyLogicModel(nn.Module):
         return torch.cat([out1, out2, out3], dim=1)                      # (B, 18)
 
 
+class LearnableRoutingDenseModel(nn.Sequential):
+    """Small model that exercises learnable-connection routing metadata ops."""
+
+    def __init__(self):
+        super().__init__(
+            nn.Flatten(),
+            LogicDense(
+                64,
+                16,
+                lut_rank=4,
+                parametrization="warp",
+                connections="learnable",
+                parametrization_kwargs={"weight_init": "random"},
+            ),
+            GroupSum(4),
+        )
+        self.input_shape = (1, 8, 8)
+
+
 @pytest.mark.parametrize("model_cls", [DenseModel, ConvModel, BranchModel, AnyLogicModel])
 def test_functional_equivalence(model_cls):
     model = model_cls()
@@ -220,5 +240,27 @@ def test_c_codegen_group_sum_scores(model_cls):
     # Verify scores match Python circuit.
     preds_python = circuit(x.reshape(1, -1))  # shape (1, k)
     assert preds_python.shape[-1] == k
+
+
+def test_verilog_export_nonempty_for_learnable_connections():
+    """Regression: learnable routing metadata must not collapse export to 0 outputs."""
+    model = LearnableRoutingDenseModel().eval()
+    x = torch.randint(0, 2, (1, *model.input_shape), dtype=torch.bool)
+
+    set_export_mode(model)
+    gm = make_fx(model)(x)
+    targets = {n.target for n in gm.graph.nodes if n.op == "call_function"}
+    assert torch.ops.aten.argmax.default in targets
+    assert torch.ops.aten.zeros_like.default in targets
+    assert torch.ops.aten.index.Tensor in targets
+
+    circuit = Circuit.from_model(model, input_shape=model.input_shape)
+    assert len(circuit.outputs) == 4
+    assert circuit.output_shape == [4]
+    assert len(circuit.gates) > 0
+
+    verilog = circuit.get_verilog_code()
+    assert "n_outputs=4" in verilog
+    assert "n_gates=" in verilog
 
 

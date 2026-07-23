@@ -32,6 +32,25 @@ def logic_dense_model():
 
 
 @pytest.fixture
+def logic_dense_model_warp_lut4():
+    model = nn.Sequential(
+        LogicDense(16, 16, lut_rank=4, parametrization="warp", parametrization_kwargs={"weight_init": "random"}),
+        LogicDense(16, 8, lut_rank=4, parametrization="warp", parametrization_kwargs={"weight_init": "random"}),
+    )
+    model.eval()
+    return model
+
+
+@pytest.fixture
+def logic_dense_model_light_lut6():
+    model = nn.Sequential(
+        LogicDense(24, 4, lut_rank=6, parametrization="light", parametrization_kwargs={"weight_init": "random"}),
+    )
+    model.eval()
+    return model
+
+
+@pytest.fixture
 def conv2d_model_wo_group_sum():
     model = nn.Sequential(
         # LogicConv2d(in_dim=8, channels=3, num_kernels=8, receptive_field_size=3, tree_depth=2),
@@ -102,6 +121,12 @@ def sample_input_1d():
 
 
 @pytest.fixture
+def sample_input_1d_lut6():
+    torch.manual_seed(0)
+    return torch.randint(0, 2, (8, 24)).bool()
+
+
+@pytest.fixture
 def sample_input_2d():
     torch.manual_seed(0)
     return torch.randint(0, 2, (8, 3, 8, 8)).bool()
@@ -121,6 +146,8 @@ def sample_input_3d():
     "model_fixture, input_fixture",
     [
         ("logic_dense_model", "sample_input_1d"),
+        ("logic_dense_model_warp_lut4", "sample_input_1d"),
+        ("logic_dense_model_light_lut6", "sample_input_1d_lut6"),
         ("conv2d_model_wo_group_sum", "sample_input_2d"),
         ("conv3d_model_wo_group_sum", "sample_input_3d"),
         ("conv2d_model", "sample_input_2d"),
@@ -206,9 +233,14 @@ ALLOWED_FX_TARGETS = {
     # Constants and copies
     torch.ops.aten.zeros_like.default,
     torch.ops.aten.ones_like.default,
+    torch.ops.aten.zeros.default,
+    torch.ops.aten.ones.default,
     torch.ops.aten.empty_like.default,
     torch.ops.aten.lift_fresh_copy.default,
     torch.ops.aten.clone.default,
+    torch.ops.aten.unsqueeze.default,
+    torch.ops.aten.to.dtype,
+    torch.ops.aten._assert_tensor_metadata.default,
 
     # Symbolic shape system (export internals)
     torch.ops.aten.sym_size.int,
@@ -230,6 +262,8 @@ class TestFXGraphPurity:
 
     @pytest.mark.parametrize("model_fixture, input_fixture, allowed_targets", [
         ("logic_dense_model", "sample_input_1d", ALLOWED_FX_TARGETS),
+        ("logic_dense_model_warp_lut4", "sample_input_1d", ALLOWED_FX_TARGETS),
+        ("logic_dense_model_light_lut6", "sample_input_1d_lut6", ALLOWED_FX_TARGETS),
         ("conv2d_model_wo_group_sum", "sample_input_2d", ALLOWED_FX_TARGETS),
         ("conv3d_model_wo_group_sum", "sample_input_3d", ALLOWED_FX_TARGETS),
         ("conv2d_model", "sample_input_2d", ALLOWED_FX_TARGETS | ALLOWED_FX_TARGETS_GROUP_SUM),

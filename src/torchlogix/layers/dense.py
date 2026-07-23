@@ -5,7 +5,7 @@ from ..functional import (
     GradFactor, get_regularization_loss, rescale_weights
     )
 from .base import LogicBase
-from ..functional import apply_luts_export_mode
+from ..functional import apply_luts_dense_export_mode
 
 
 class LogicDense(LogicBase):
@@ -96,13 +96,7 @@ class LogicDense(LogicBase):
         # Split into train/eval and export path (optimized for efficiency and exportability, respectively)
         # Export path only needs to know which LUT, not how it's parameterized
         if self.export_mode:
-            if self.lut_rank != 2:
-                raise NotImplementedError("Export mode currently only supports lut_rank=2.")
-            # TODO: apply_luts function w/ bit shifts that works on higher lut_ranks
-            a = x[:, 0]
-            b = x[:, 1]
-            ids = self._export_lut_ids
-            out = apply_luts_export_mode(a, b, ids)
+            out = apply_luts_dense_export_mode(x, self._export_luts)
         else:
             # Delegate to parametrization with einsum contraction
             # b=batch, n=neurons, k=num_basis
@@ -171,15 +165,14 @@ class LogicDense(LogicBase):
     def set_export_mode(self, enabled: bool = True):
         """Enable or disable export mode for circuit/ONNX tracing.
 
-        When enabled, pre-computes and caches LUT IDs as a buffer to avoid
-        recomputing argmax in the exported model.
+        When enabled, pre-computes and caches LUT truth tables as a buffer.
         """
         self.eval()
         self.export_mode = enabled
 
         if enabled:
-            _, ids = self.get_luts_and_ids()
-            self.register_buffer('_export_lut_ids', ids, persistent=True)
+            luts = self.get_luts().to(torch.bool)
+            self.register_buffer('_export_luts', luts, persistent=True)
         else:
-            if hasattr(self, '_export_lut_ids'):
-                delattr(self, '_export_lut_ids')
+            if hasattr(self, '_export_luts'):
+                delattr(self, '_export_luts')

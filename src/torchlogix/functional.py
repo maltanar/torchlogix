@@ -130,6 +130,41 @@ def apply_luts_export_mode(
     return result
 
 
+def apply_luts_dense_export_mode(
+    x: torch.BoolTensor,
+    luts: torch.BoolTensor,
+) -> torch.BoolTensor:
+    """Apply dense LUTs in export mode for arbitrary ``lut_rank``.
+
+    Args:
+        x: Boolean gathered inputs of shape ``(batch, lut_rank, out_dim)``.
+        luts: Boolean LUT tables of shape ``(out_dim, 2**lut_rank)``.
+
+    Returns:
+        Boolean output tensor of shape ``(batch, out_dim)``.
+    """
+    x = x.to(torch.bool)
+    luts = luts.to(torch.bool)
+
+    batch_size, lut_rank, out_dim = x.shape
+    lut_entries = 1 << lut_rank
+
+    result = torch.zeros((batch_size, out_dim), dtype=torch.bool, device=x.device)
+    for entry in range(lut_entries):
+        mask = torch.ones((batch_size, out_dim), dtype=torch.bool, device=x.device)
+
+        # Entry bits follow table order [MSB ... LSB] as produced by get_luts.
+        for bit in range(lut_rank):
+            bit_is_one = (entry >> (lut_rank - 1 - bit)) & 1
+            x_bit = x[:, bit, :]
+            mask = mask & (x_bit if bit_is_one else ~x_bit)
+
+        lut_value = luts[:, entry].unsqueeze(0).expand(batch_size, -1)
+        result = torch.where(mask, lut_value, result)
+
+    return result
+
+
 _map = [
     lambda a, b: torch.zeros_like(a),              # 0:  CONST_FALSE
     lambda a, b: a & b,
