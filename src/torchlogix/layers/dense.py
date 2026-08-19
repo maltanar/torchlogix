@@ -6,6 +6,7 @@ from ..functional import (
     )
 from .base import LogicBase
 from ..functional import apply_luts_export_mode
+from ..onnx_export import lookup_table
 
 
 class LogicDense(LogicBase):
@@ -82,6 +83,14 @@ class LogicDense(LogicBase):
         """
         assert x.ndim >= 2, x.ndim
         assert x.shape[-1] == self.in_dim, (x.shape[-1], self.in_dim)
+
+        if self.export_mode and torch.onnx.is_in_onnx_export():
+            return lookup_table(
+                x.to(torch.uint8),
+                self._export_lut_indices,
+                self._export_lut_table,
+                1,
+            )
 
         if self.grad_factor != 1.0:
             x = GradFactor.apply(x, self.grad_factor)
@@ -178,8 +187,19 @@ class LogicDense(LogicBase):
         self.export_mode = enabled
 
         if enabled:
-            _, ids = self.get_luts_and_ids()
+            luts, ids = self.get_luts_and_ids()
             self.register_buffer('_export_lut_ids', ids, persistent=True)
+            # LookupTable addresses slot k with place value 2**k, whereas the
+            # truth table returned by get_luts_and_ids is MSB-first.
+            self.register_buffer(
+                '_export_lut_indices',
+                self.connections.indices.flip(0).t().contiguous().to(torch.int64),
+                persistent=True,
+            )
+            self.register_buffer(
+                '_export_lut_table', luts.to(torch.uint8), persistent=True
+            )
         else:
-            if hasattr(self, '_export_lut_ids'):
-                delattr(self, '_export_lut_ids')
+            for name in ('_export_lut_ids', '_export_lut_indices', '_export_lut_table'):
+                if hasattr(self, name):
+                    delattr(self, name)

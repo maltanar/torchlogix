@@ -23,6 +23,10 @@ class GroupSum(torch.nn.Module):
     def forward(self, x):
         assert x.shape[-1] % self.k == 0, "The number of input features must be divisible by k."
 
+        if torch.onnx.is_in_onnx_export() and x.dtype in (torch.bool, torch.uint8):
+            # LookupTable emits uint8; widen to avoid overflow in the reduction
+            x = x.to(torch.int32)
+
         result = x.reshape(x.shape[:-1] + (self.k, x.shape[-1] // self.k)).sum(-1)
         if self.beta != 0.0:
             result = result + self.beta
