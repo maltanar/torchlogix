@@ -9,6 +9,7 @@ from ..connections import setup_connections
 from ..functional import (
     get_regularization_loss, rescale_weights, apply_luts_export_mode
     )
+from ..onnx_export import lookup_table_conv
 from .base import LogicBase
 
 
@@ -152,6 +153,8 @@ class _LogicConvNd(LogicBase):
             * ``out_width  = (in_width  + 2 * padding - receptive_field_size) // stride + 1``.
         """
         if self.export_mode:
+            if torch.onnx.is_in_onnx_export():
+                return self._forward_onnx_export(x)
             return self._forward_export_mode(x)
         
         if self.padding > 0:
@@ -215,6 +218,22 @@ class _LogicConvNd(LogicBase):
         return x
 
 
+    def _forward_onnx_export(self, x):
+        """Emits a single LookupTableConv node (see torchlogix.onnx_export)."""
+        n_spatial = len(self.receptive_field_size)
+        x = x.movedim(1, -1).to(torch.uint8)  # channels-first -> channels-last
+        y = lookup_table_conv(
+            x,
+            self._export_lut_conv_indices,
+            self._export_lut_conv_table,
+            self.tree_depth,
+            list(self.receptive_field_size),
+            [self.stride] * n_spatial,
+            [self.padding] * n_spatial * 2,
+        )
+        return y.movedim(-1, 1)  # channels-last -> channels-first
+
+
     def get_luts_and_ids(self):
         """Computes the most probable LUT and its ID for each neuron.
 
@@ -275,6 +294,13 @@ class _LogicConvNd(LogicBase):
                 stacked = stacked.expand(-1, self.n_kernel_positions, -1)
                 self.register_buffer(f'_export_lut_ids_L{level_idx}',
                                     stacked, persistent=True)
+
+            self.register_buffer(
+                '_export_lut_conv_indices', self._build_onnx_indices(), persistent=True
+            )
+            self.register_buffer(
+                '_export_lut_conv_table', self._build_onnx_table(), persistent=True
+            )
         else:
             buffers_to_delete = [name for name in self._buffers.keys()
                                 if name.startswith('_export_lut')]
@@ -283,6 +309,33 @@ class _LogicConvNd(LogicBase):
 
     def _get_export_lut_ids(self, level):
         return getattr(self, f'_export_lut_ids_L{level}')
+
+
+    def _build_onnx_indices(self):
+        """Leaf-level connectivity for LookupTableConv: (num_kernels, lut_rank**(tree_depth-1), lut_rank).
+
+        Reads position 0 of the level-0 sliding-window indices, which carries zero offset and is
+        therefore exactly the (unshifted) receptive-field-relative connectivity every output
+        position reuses.
+        """
+        # (lut_rank, num_kernels, n_kernel_positions, sample_size, n_spatial + 1)
+        coords = self.connections.indices[0][:, :, 0, :, :]
+        coords = coords.permute(1, 2, 0, 3)  # (num_kernels, sample_size, lut_rank, n_spatial + 1)
+        spatial, channel = coords[..., :-1], coords[..., -1]
+        flat = spatial[..., 0]
+        for d in range(1, len(self.receptive_field_size)):
+            flat = flat * self.receptive_field_size[d] + spatial[..., d]
+        flat = flat * self.channels + channel
+        return flat.to(torch.int64)
+
+    def _build_onnx_table(self):
+        """Per-tree-node truth tables for LookupTableConv: (num_kernels, N_nodes, 2**lut_rank).
+
+        Packed level-major (leaves first), matching _build_onnx_indices's position ordering.
+        """
+        tree_luts = self.get_luts()
+        rows = [torch.stack(level_luts, dim=1) for level_luts in tree_luts]  # (num_kernels, positions, 2**lut_rank)
+        return torch.cat(rows, dim=1).to(torch.uint8)
 
 
 class LogicConv2d(_LogicConvNd):

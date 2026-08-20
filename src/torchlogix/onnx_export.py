@@ -15,6 +15,7 @@ import torch
 
 LOOKUP_TABLE_DOMAIN = "qonnx.custom_op.lnn"
 LOOKUP_TABLE_OPSET = 3
+LOOKUP_TABLE_CONV_OPSET = 1
 
 
 @torch.library.custom_op("torchlogix::lookup_table", mutates_args=())
@@ -104,9 +105,141 @@ def _lookup_table_onnx(x, indices, table, input_bits):
     )
 
 
+def _im2col_channels_last(x, kernel_shape, strides, pads):
+    """x: (N, *D, C) -> patches: (N, *O, prod(kernel_shape) * C), row-major-spatial/channel-minor."""
+    n_spatial = len(kernel_shape)
+    pad_arg = [0, 0]
+    for d in reversed(range(n_spatial)):
+        pad_arg += [pads[d], pads[d + n_spatial]]
+    x = torch.nn.functional.pad(x, pad_arg, mode="constant", value=0)
+    for d in range(n_spatial):
+        x = x.unfold(1 + d, kernel_shape[d], strides[d])
+    x = x.movedim(n_spatial + 1, -1)  # move channel dim past the newly appended window dims
+    return x.flatten(-(n_spatial + 1))
+
+
+@torch.library.custom_op("torchlogix::lookup_table_conv", mutates_args=())
+def lookup_table_conv(
+    x: torch.Tensor,
+    indices: torch.Tensor,
+    table: torch.Tensor,
+    tree_depth: int,
+    kernel_shape: list[int],
+    strides: list[int],
+    pads: list[int],
+) -> torch.Tensor:
+    """Reference (eager) semantics of the ``LookupTableConv`` op.
+
+    Args:
+        x: Channels-last tensor of shape ``(N, *D, C)`` with values in {0, 1}.
+        indices: ``(M, P, lut_rank)`` int64 tensor, leaf-level receptive-field connectivity.
+        table: ``(M, N_nodes, 2 ** lut_rank)`` tensor of per-tree-node truth tables, packed
+            level-major starting from the leaves (see the op's spec for ``N_nodes``).
+        tree_depth: Number of tree levels; ``0`` means passthrough (no lookup evaluated).
+        kernel_shape, strides, pads: Receptive-field geometry, same convention as ONNX ``Conv``.
+
+    Returns:
+        ``(N, *O, M)`` tensor with ``table``'s dtype (or ``(N, *O, M, lut_rank)`` with ``x``'s
+        dtype when ``tree_depth == 0``).
+    """
+    lut_rank = indices.shape[-1]
+    patches = _im2col_channels_last(x, kernel_shape, strides, pads)  # (N, *O, prod(kernel_shape)*C)
+    gathered = patches[..., indices].to(torch.int64)  # (N, *O, M, P, lut_rank)
+
+    if tree_depth == 0:
+        return gathered[..., 0, :]
+
+    place_value = 2 ** torch.arange(lut_rank, device=x.device, dtype=torch.int64)
+    level = gathered  # (..., M, num_nodes_this_level, lut_rank)
+    row_offset = 0
+    for l in range(tree_depth):
+        addr = (level * place_value).sum(-1)  # (..., M, num_nodes_this_level)
+        num_nodes_this_level = addr.shape[-1]
+        rows = table[:, row_offset:row_offset + num_nodes_this_level, :]
+        rows = rows.expand(*addr.shape[:-2], *rows.shape)
+        out = torch.gather(rows, -1, addr.unsqueeze(-1)).squeeze(-1)
+        row_offset += num_nodes_this_level
+        if l < tree_depth - 1:
+            level = out.reshape(*out.shape[:-1], num_nodes_this_level // lut_rank, lut_rank)
+        else:
+            return out[..., 0]  # root: exactly one node per kernel
+
+
+@lookup_table_conv.register_fake
+def _lookup_table_conv_meta(x, indices, table, tree_depth, kernel_shape, strides, pads):
+    n_spatial = len(kernel_shape)
+    out_spatial = [
+        (x.shape[1 + d] + pads[d] + pads[d + n_spatial] - kernel_shape[d]) // strides[d] + 1
+        for d in range(n_spatial)
+    ]
+    m = indices.shape[0]
+    if tree_depth == 0:
+        shape = (x.shape[0], *out_spatial, m, indices.shape[-1])
+        dtype = x.dtype
+    else:
+        shape = (x.shape[0], *out_spatial, m)
+        dtype = table.dtype
+    return torch.empty(shape, dtype=dtype, device=x.device)
+
+
+def _register_conv_schema():
+    """Register a minimal ONNX schema so the node can be built and checked."""
+    import onnx
+
+    global _CONV_SCHEMA_REGISTERED
+    if _CONV_SCHEMA_REGISTERED:
+        return
+    op_schema = onnx.defs.OpSchema
+    x_types = ["tensor(bool)", "tensor(uint8)", "tensor(uint16)", "tensor(uint32)"]
+    table_types = ["tensor(bool)", "tensor(uint8)"]
+    schema = op_schema(
+        "LookupTableConv",
+        LOOKUP_TABLE_DOMAIN,
+        LOOKUP_TABLE_CONV_OPSET,
+        inputs=[
+            op_schema.FormalParameter("X", "TX"),
+            op_schema.FormalParameter("indices", "TI"),
+            op_schema.FormalParameter("table", "TT"),
+        ],
+        outputs=[op_schema.FormalParameter("Y", "TT")],
+        attributes=[
+            op_schema.Attribute("tree_depth", op_schema.AttrType.INT, "", required=False),
+            op_schema.Attribute("kernel_shape", op_schema.AttrType.INTS, "", required=True),
+            op_schema.Attribute("strides", op_schema.AttrType.INTS, "", required=False),
+            op_schema.Attribute("pads", op_schema.AttrType.INTS, "", required=False),
+        ],
+        type_constraints=[
+            ("TX", x_types, ""),
+            ("TI", ["tensor(int32)", "tensor(int64)"], ""),
+            ("TT", table_types, ""),
+        ],
+    )
+    onnx.defs.register_schema(schema)
+    _CONV_SCHEMA_REGISTERED = True
+
+
+_CONV_SCHEMA_REGISTERED = False
+
+
+def _lookup_table_conv_onnx(x, indices, table, tree_depth, kernel_shape, strides, pads):
+    import onnxscript
+
+    _register_conv_schema()
+    lnn_opset = onnxscript.values.Opset(
+        domain=LOOKUP_TABLE_DOMAIN, version=LOOKUP_TABLE_CONV_OPSET
+    )
+    return lnn_opset.LookupTableConv(
+        x, indices, table,
+        tree_depth=tree_depth, kernel_shape=kernel_shape, strides=strides, pads=pads,
+    )
+
+
 def custom_translation_table():
     """Translation table mapping torchlogix ops to their ONNX counterparts."""
-    return {torch.ops.torchlogix.lookup_table.default: _lookup_table_onnx}
+    return {
+        torch.ops.torchlogix.lookup_table.default: _lookup_table_onnx,
+        torch.ops.torchlogix.lookup_table_conv.default: _lookup_table_conv_onnx,
+    }
 
 
 def export(model, args, f, **kwargs):
