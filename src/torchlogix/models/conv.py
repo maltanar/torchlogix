@@ -72,6 +72,7 @@ class ClgnMnist(torch.nn.Sequential):
     Model as described in the paper 'Convolutional Logic Gate Networks'
     for the MNIST dataset.
     """
+    n_input_bits = 1
 
     def __init__(self, thresholds: torch.Tensor, binarization: str, binarization_kwargs: dict, 
                  k_num: int=16, parametrization="raw", tau=1.0, **llkw):
