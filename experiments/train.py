@@ -217,6 +217,19 @@ def save_best_model(ctx: CallbackContext, output_dir: Path):
         print(f"New best model saved with val_accuracy: {val_acc:.4f} at step {ctx.step}")
 
 
+def save_model_thresholds(ctx: CallbackContext, output_dir: Path):
+    """Save binarization thresholds when the model has concrete thresholds."""
+    get_thresholds = getattr(ctx.model[0], "get_thresholds", None)
+    if get_thresholds is None:
+        return
+
+    thresholds = get_thresholds()
+    if thresholds is None:
+        return
+
+    save_thresholds_csv(ctx.step, thresholds=thresholds.detach(), output_path=output_dir)
+
+
 def run_training(args, callbacks=None):
     """Run the training loop."""
     if callbacks is None:
@@ -367,6 +380,8 @@ def run_training(args, callbacks=None):
             print(f"Iteration {i + 1:6d} | " +
                   " | ".join([f"{k}: {v:.4f}" for k, v in metrics.items()]))
 
+            best_val_acc = max(best_val_acc, metrics.get("val_acc_discrete", 0.0))
+
             running_train_loss, n = 0.0, 0
 
             ctx = CallbackContext(
@@ -403,8 +418,7 @@ def main():
     call_backs = [
         lambda ctx: save_best_model(ctx, args.output),
         lambda ctx: save_metrics_csv(ctx.step, ctx.metrics, args.output),
-        lambda ctx: save_thresholds_csv(ctx.step, thresholds=ctx.model[0].get_thresholds().detach(), 
-                                        output_path=args.output) if hasattr(ctx.model[0], "get_thresholds") else None
+        lambda ctx: save_model_thresholds(ctx, args.output),
     ]
 
     # Pretty print args
