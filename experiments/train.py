@@ -83,6 +83,10 @@ def get_parser():
     parser.add_argument(
         "--weight-decay", "-wd", type=float, default=None, help="Weight decay for optimizer"
     )
+    parser.add_argument(
+        "--lonnx", action="store_true",
+        help="Export the best validation checkpoint to LONNX when training completes"
+    )
 
     # Connection parameters
     parser.add_argument(
@@ -208,7 +212,7 @@ def save_best_model(ctx: CallbackContext, output_dir: Path):
     """Callback to save the best model based on validation accuracy."""
     val_acc = ctx.metrics.get("val_acc_discrete", 0.0)
     if not hasattr(save_best_model, "best_val_acc"):
-        save_best_model.best_val_acc = 0.0
+        save_best_model.best_val_acc = float("-inf")
 
     if val_acc > save_best_model.best_val_acc:
         save_best_model.best_val_acc = val_acc
@@ -230,6 +234,23 @@ def save_model_thresholds(ctx: CallbackContext, output_dir: Path):
     save_thresholds_csv(ctx.step, thresholds=thresholds.detach(), output_path=output_dir)
 
 
+def export_best_model_lonnx(model: torch.nn.Module, sample_input: torch.Tensor, output_dir: Path):
+    """Export the best validation checkpoint to LONNX."""
+    checkpoint_path = Path(output_dir) / "best_model.pt"
+    if not checkpoint_path.exists():
+        raise FileNotFoundError(
+            f"Cannot export LONNX because best checkpoint does not exist: {checkpoint_path}"
+        )
+
+    state_dict = torch.load(checkpoint_path, map_location=sample_input.device)
+    model.load_state_dict(state_dict)
+    model.eval()
+
+    lonnx_path = Path(output_dir) / "best_model.onnx"
+    torchlogix.onnx_export.export(model, (sample_input,), str(lonnx_path))
+    print(f"Best model exported to LONNX: {lonnx_path}")
+
+
 def run_training(args, callbacks=None):
     """Run the training loop."""
     if callbacks is None:
@@ -240,6 +261,9 @@ def run_training(args, callbacks=None):
         random.seed(args.seed)
         np.random.seed(args.seed)
     torch.set_num_threads(1)
+
+    if hasattr(save_best_model, "best_val_acc"):
+        save_best_model.best_val_acc = float("-inf")
 
     # Load data (omit test set during training)
     train_loader, validation_loader, _ = load_dataset(args)
@@ -397,6 +421,11 @@ def run_training(args, callbacks=None):
     if args.output is not None:
         torch.save(model.state_dict(), f"{args.output}/final_model.pt")
 
+    if args.lonnx:
+        sample_input, _ = next(iter(train_loader))
+        sample_input = sample_input[:1].to(args.device)
+        export_best_model_lonnx(model, sample_input, args.output)
+
     print(f"\nTraining completed!")
     print(f"Best validation accuracy: {best_val_acc:.4f}")
     print(f"Results saved to: {args.output}")
@@ -414,6 +443,8 @@ def main():
             f"Number of iterations ({args.num_iterations}) must be divisible by "
             f"evaluation frequency ({args.eval_freq})"
         )
+    if args.lonnx:
+        assert args.eval_freq > 0, "LONNX export requires validation; set eval_freq greater than 0."
 
     call_backs = [
         lambda ctx: save_best_model(ctx, args.output),
