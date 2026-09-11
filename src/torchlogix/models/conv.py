@@ -75,7 +75,16 @@ class ClgnMnist(torch.nn.Sequential):
     n_input_bits = 1
 
     def __init__(self, thresholds: torch.Tensor, binarization: str, binarization_kwargs: dict, 
-                 k_num: int=16, parametrization="raw", tau=1.0, **llkw):
+                 k_num: int=16, parametrization="raw", tau=1.0, pooling_layer=None, **llkw):
+        if pooling_layer is None:
+            pooling_layer = llkw.pop("pooling_layer", OrPooling2d)
+        if isinstance(pooling_layer, str):
+            if pooling_layer.lower() in ("maxpool", "maxpool2d", "max"):
+                pooling_layer = torch.nn.MaxPool2d
+            elif pooling_layer.lower() in ("or", "orpool", "orpooling2d"):
+                pooling_layer = OrPooling2d
+            else:
+                raise ValueError(f"Unknown pooling layer: {pooling_layer}")
         
         binarization = "dummy"
         binarization_module = setup_binarization(thresholds, binarization, **binarization_kwargs)
@@ -93,7 +102,7 @@ class ClgnMnist(torch.nn.Sequential):
                 parametrization=parametrization,
             )
         )
-        layers.append(OrPooling2d(kernel_size=2, stride=2, padding=0))
+        layers.append(pooling_layer(kernel_size=2, stride=2, padding=0))
 
         layers.append(
             LogicConv2d(
@@ -107,7 +116,7 @@ class ClgnMnist(torch.nn.Sequential):
                 parametrization=parametrization,
             )
         )
-        layers.append(OrPooling2d(kernel_size=2, stride=2, padding=1))
+        layers.append(pooling_layer(kernel_size=2, stride=2, padding=1))
 
         layers.append(
             LogicConv2d(
@@ -121,7 +130,7 @@ class ClgnMnist(torch.nn.Sequential):
                 parametrization=parametrization,
             )
         )
-        layers.append(OrPooling2d(kernel_size=2, stride=2, padding=1))
+        layers.append(pooling_layer(kernel_size=2, stride=2, padding=1))
 
         layers.append(torch.nn.Flatten())
 
@@ -138,10 +147,28 @@ class ClgnMnistTiny(ClgnMnist):
         super(ClgnMnistTiny, self).__init__(k_num=4, tau=tau, **llkw)
 
 
+class ClgnMnistTinyMaxPool(ClgnMnist):
+    def __init__(self, **llkw):
+        tau = llkw.get("tau", 1.0)
+        super(ClgnMnistTinyMaxPool, self).__init__(k_num=4, tau=tau, pooling_layer=torch.nn.MaxPool2d, **llkw)
+
+
+ClgnMnistMaxPoolTiny = ClgnMnistTinyMaxPool
+
+
 class ClgnMnistSmall(ClgnMnist):
     def __init__(self, **llkw):
         tau = llkw.get("tau", 6.5)
         super(ClgnMnistSmall, self).__init__(k_num=16, tau=tau, **llkw)
+
+
+class ClgnMnistSmallMaxPool(ClgnMnist):
+    def __init__(self, **llkw):
+        tau = llkw.get("tau", 6.5)
+        super(ClgnMnistSmallMaxPool, self).__init__(k_num=16, tau=tau, pooling_layer=torch.nn.MaxPool2d, **llkw)
+
+
+ClgnMnistMaxPoolSmall = ClgnMnistSmallMaxPool
 
 
 class ClgnMnistMedium(ClgnMnist):
@@ -150,10 +177,28 @@ class ClgnMnistMedium(ClgnMnist):
         super(ClgnMnistMedium, self).__init__(k_num=64, tau=tau, **llkw)
 
 
+class ClgnMnistMediumMaxPool(ClgnMnist):
+    def __init__(self, **llkw):
+        tau = llkw.get("tau", 28.)
+        super(ClgnMnistMediumMaxPool, self).__init__(k_num=64, tau=tau, pooling_layer=torch.nn.MaxPool2d, **llkw)
+
+
+ClgnMnistMaxPoolMedium = ClgnMnistMediumMaxPool
+
+
 class ClgnMnistLarge(ClgnMnist):
     def __init__(self, **llkw):
         tau = llkw.get("tau", 35.)
         super(ClgnMnistLarge, self).__init__(k_num=1024, tau=tau, **llkw)
+
+
+class ClgnMnistLargeMaxPool(ClgnMnist):
+    def __init__(self, **llkw):
+        tau = llkw.get("tau", 35.)
+        super(ClgnMnistLargeMaxPool, self).__init__(k_num=1024, tau=tau, pooling_layer=torch.nn.MaxPool2d, **llkw)
+
+
+ClgnMnistMaxPoolLarge = ClgnMnistLargeMaxPool
 
 
 class ClgnCifar10(torch.nn.Sequential):
