@@ -32,6 +32,7 @@ dependencies = [
     "rich",
     "torch-geometric",
     "wheel",
+    "onnxscript"
 ]
 
 [project.optional-dependencies]
