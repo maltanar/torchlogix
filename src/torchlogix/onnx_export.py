@@ -204,6 +204,7 @@ def _register_conv_schema():
         outputs=[op_schema.FormalParameter("Y", "TT")],
         attributes=[
             op_schema.Attribute("tree_depth", op_schema.AttrType.INT, "", required=False),
+            op_schema.Attribute("out_bits", op_schema.AttrType.INT, "", required=False),
             op_schema.Attribute("kernel_shape", op_schema.AttrType.INTS, "", required=True),
             op_schema.Attribute("strides", op_schema.AttrType.INTS, "", required=False),
             op_schema.Attribute("pads", op_schema.AttrType.INTS, "", required=False),
@@ -230,7 +231,7 @@ def _lookup_table_conv_onnx(x, indices, table, tree_depth, kernel_shape, strides
     )
     return lnn_opset.LookupTableConv(
         x, indices, table,
-        tree_depth=tree_depth, kernel_shape=kernel_shape, strides=strides, pads=pads,
+        tree_depth=tree_depth, out_bits=1, kernel_shape=kernel_shape, strides=strides, pads=pads,
     )
 
 

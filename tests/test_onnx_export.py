@@ -57,6 +57,19 @@ def test_export_emits_lookup_table_nodes(mlp, tmp_path):
     }
 
 
+def test_export_emits_binary_lookup_table_conv_attributes(conv2d_model_wo_group_sum, sample_input_2d, tmp_path):
+    path = tmp_path / "conv.onnx"
+
+    onnx_export.export(conv2d_model_wo_group_sum, (sample_input_2d,), str(path))
+
+    model = onnx.load(str(path))
+    conv_nodes = [
+        node for node in model.graph.node if node.domain == DOMAIN and node.op_type == "LookupTableConv"
+    ]
+    assert len(conv_nodes) == 1
+    assert ("out_bits", 1) in {(attribute.name, attribute.i) for attribute in conv_nodes[0].attribute}
+
+
 def test_exported_lookup_tables_match_eager_model(mlp, tmp_path):
     x = torch.rand(3, 1, 8, 8) > 0.5
     path = tmp_path / "mlp.onnx"
