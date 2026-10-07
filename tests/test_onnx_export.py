@@ -91,3 +91,41 @@ def test_exported_lookup_tables_match_eager_model(mlp, tmp_path):
     actual = h.reshape(3, 10, 4).astype(np.int64).sum(-1) / 8.0
 
     assert np.allclose(actual, expected)
+
+
+@pytest.mark.parametrize("lut_rank", [2, 4])
+def test_exported_lookup_table_conv_matches_eager_model(lut_rank, tmp_path):
+    from torchlogix.layers import LogicConv2d
+
+    torch.manual_seed(0)
+    conv = LogicConv2d(
+        in_dim=8,
+        channels=3,
+        num_kernels=4,
+        receptive_field_size=3,
+        tree_depth=2,
+        lut_rank=lut_rank,
+        parametrization="warp",
+    )
+    conv.eval()
+
+    x = (torch.rand(2, 3, 8, 8) > 0.5).float()
+    expected = conv(x).detach().numpy()
+
+    path = tmp_path / f"conv_rank{lut_rank}.onnx"
+    onnx_export.export(conv, (x,), str(path))
+
+    model = onnx.load(str(path))
+    onnx.checker.check_model(model)
+
+    init = {i.name: numpy_helper.to_array(i) for i in model.graph.initializer}
+    indices = torch.tensor(init["_export_lut_conv_indices"])
+    table = torch.tensor(init["_export_lut_conv_table"])
+
+    x_cl = x.movedim(1, -1).to(torch.uint8)
+    actual = onnx_export.lookup_table_conv(
+        x_cl, indices, table, 2, [3, 3], [1, 1], [0, 0, 0, 0]
+    ).movedim(-1, 1).numpy()
+
+    assert np.array_equal(actual, expected)
+

@@ -285,15 +285,18 @@ class _LogicConvNd(LogicBase):
         self.export_mode = enabled
 
         if enabled:
-            _, tree_ids = self.get_luts_and_ids()
-
-            for level_idx, level_ids in enumerate(tree_ids):
-                stacked = torch.stack(level_ids)  # (lut_rank**i, num_kernels)
-                # shape: (num_kernels, spatial, n_nodes) — broadcasts over any batch dim
-                stacked = stacked.T.unsqueeze(-2)
-                stacked = stacked.expand(-1, self.n_kernel_positions, -1)
-                self.register_buffer(f'_export_lut_ids_L{level_idx}',
-                                    stacked, persistent=True)
+            if self.lut_rank <= 4:
+                try:
+                    _, tree_ids = self.get_luts_and_ids()
+                    for level_idx, level_ids in enumerate(tree_ids):
+                        stacked = torch.stack(level_ids)  # (lut_rank**i, num_kernels)
+                        # shape: (num_kernels, spatial, n_nodes) — broadcasts over any batch dim
+                        stacked = stacked.T.unsqueeze(-2)
+                        stacked = stacked.expand(-1, self.n_kernel_positions, -1)
+                        self.register_buffer(f'_export_lut_ids_L{level_idx}',
+                                            stacked, persistent=True)
+                except Exception:
+                    pass
 
             self.register_buffer(
                 '_export_lut_conv_indices', self._build_onnx_indices(), persistent=True
@@ -333,18 +336,26 @@ class _LogicConvNd(LogicBase):
 
         Packed level-major (leaves first), matching _build_onnx_indices's position ordering.
 
-        get_luts()'s truth tables are addressed circuit-style (addr = 2*a + b, a first/MSB), while
-        LookupTableConv addresses ascending (addr = sum_k v[k] * 2**k, slot 0 = LSB) without
-        reordering which child occupies which slot at any level. For lut_rank=2 these two
-        conventions differ by a swap of the middle two entries (addr 1 <-> addr 2); swapping them
-        here keeps every level's indices/grouping untouched while making the table addressable the
-        LookupTableConv way.
+        get_luts()'s truth tables are addressed circuit-style (addr = sum_k v[k] * 2**(lut_rank - 1 - k),
+        slot 0 = MSB), while LookupTableConv addresses ascending (addr = sum_k v[k] * 2**k, slot 0 = LSB)
+        without reordering which child occupies which slot at any level. Permuting each row with the
+        bit-reversal permutation keeps every level's indices/grouping untouched while making the table
+        addressable the LookupTableConv way.
         """
         tree_luts = self.get_luts()
         rows = [torch.stack(level_luts, dim=1) for level_luts in tree_luts]  # (num_kernels, positions, 2**lut_rank)
         table = torch.cat(rows, dim=1).to(torch.uint8)
-        table[..., [1, 2]] = table[..., [2, 1]]
-        return table
+
+        lut_entries = 1 << self.lut_rank
+        perm = torch.zeros(lut_entries, dtype=torch.long, device=table.device)
+        for entry in range(lut_entries):
+            rev = 0
+            for bit in range(self.lut_rank):
+                if (entry >> bit) & 1:
+                    rev |= (1 << (self.lut_rank - 1 - bit))
+            perm[entry] = rev
+
+        return table[..., perm]
 
 
 class LogicConv2d(_LogicConvNd):

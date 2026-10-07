@@ -187,10 +187,15 @@ class LogicDense(LogicBase):
         self.export_mode = enabled
 
         if enabled:
-            luts, ids = self.get_luts_and_ids()
-            self.register_buffer('_export_lut_ids', ids, persistent=True)
+            luts = self.get_luts()
+            if self.lut_rank <= 4:
+                try:
+                    _, ids = self.get_luts_and_ids()
+                    self.register_buffer('_export_lut_ids', ids, persistent=True)
+                except Exception:
+                    pass
             # LookupTable addresses slot k with place value 2**k, whereas the
-            # truth table returned by get_luts_and_ids is MSB-first.
+            # truth table returned by get_luts is MSB-first.
             self.register_buffer(
                 '_export_lut_indices',
                 self.connections.indices.flip(0).t().contiguous().to(torch.int64),
