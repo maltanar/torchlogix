@@ -1,0 +1,700 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>torchlogix.layers.conv &mdash; TorchLogix 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=01f34227"></script>
+      <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../../../_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="../../../_static/copybutton.js?v=30646c52"></script>
+      <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            TorchLogix
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../guides/installation.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../guides/quickstart.html">Quick Start</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../guides/concepts.html">Core Concepts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../guides/hardware_deployment.html">Hardware Deployment Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../guides/hardware_deployment.html#circuit-native"><code class="docutils literal notranslate"><span class="pre">Circuit</span></code> (native)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../guides/aig_export.html">AIG Export Guide</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/torchlogix.html">TorchLogix Package</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/circuit.html">Circuit</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/layers.html">Layers Module</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/models.html">Models Module</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/functional.html">Functional Module</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">TorchLogix</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">torchlogix.layers.conv</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for torchlogix.layers.conv</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">math</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Union</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">torch.nn.common_types</span><span class="w"> </span><span class="kn">import</span> <span class="n">_size_2_t</span><span class="p">,</span> <span class="n">_size_3_t</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">torch.nn.modules.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">_pair</span><span class="p">,</span> <span class="n">_triple</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">..connections</span><span class="w"> </span><span class="kn">import</span> <span class="n">setup_connections</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">..functional</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">get_regularization_loss</span><span class="p">,</span> <span class="n">rescale_weights</span><span class="p">,</span> <span class="n">apply_luts_export_mode</span>
+    <span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">LogicBase</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">_LogicConvNd</span><span class="p">(</span><span class="n">LogicBase</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Abstract baseclass for convolutional logic layers.</span>
+<span class="sd">    This module provides common functionality for 2D and 3D logic convolutional</span>
+<span class="sd">    layers with differentiable learning.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        in_dim: Input spatial dimensions ``(depth, height, width)``.</span>
+<span class="sd">        channels: Number of input channels.</span>
+<span class="sd">        num_kernels: Number of output logic kernels (analogous to output channels)</span>
+<span class="sd">        tree_depth: Depth of the binary logic tree. A depth of ``d`` uses</span>
+<span class="sd">            ``2**d`` leaves per receptive field.</span>
+<span class="sd">        receptive_field_size: Spatial size (depth, height and width) of the</span>
+<span class="sd">            receptive field (assumed cubic).</span>
+<span class="sd">        stride: Convolution stride in all spatial dimensions.</span>
+<span class="sd">        padding: Zero-padding applied symmetrically to depth, height and width</span>
+<span class="sd">            before selecting receptive fields.</span>
+<span class="sd">        conv_dimension: Dimension of the convolution (2 or 3).</span>
+<span class="sd">        device (str): Device to run the layer on ('cpu' or 'cuda').</span>
+<span class="sd">        grad_factor (float): Gradient scaling factor.</span>
+<span class="sd">        lut_rank (int): Rank of the LUTs used in the layer.</span>
+<span class="sd">        parametrization (str): Type of parametrization to use ('raw', 'warp', 'light').</span>
+<span class="sd">        parametrization_kwargs (dict): Additional keyword arguments for parametrization.</span>
+<span class="sd">        connections (str): Type of connections to use ('fixed', 'learnable', etc.).</span>
+<span class="sd">        connections_kwargs (dict): Additional keyword arguments for connections."""</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">in_dim</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">_size_2_t</span><span class="p">,</span> <span class="n">_size_3_t</span><span class="p">,</span> <span class="nb">int</span><span class="p">],</span>
+        <span class="n">channels</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span>
+        <span class="n">num_kernels</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">16</span><span class="p">,</span>
+        <span class="n">tree_depth</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">receptive_field_size</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">_size_2_t</span><span class="p">,</span> <span class="n">_size_3_t</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="mi">2</span><span class="p">,</span>
+        <span class="n">stride</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span>
+        <span class="n">padding</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
+        <span class="n">conv_dimension</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">2</span><span class="p">,</span>
+        <span class="n">device</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"cpu"</span><span class="p">,</span>
+        <span class="n">grad_factor</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span>
+        <span class="n">lut_rank</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">2</span><span class="p">,</span>
+        <span class="n">parametrization</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"raw"</span><span class="p">,</span>
+        <span class="n">parametrization_kwargs</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">connections</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"fixed"</span><span class="p">,</span>
+        <span class="n">connections_kwargs</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span>
+            <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span>
+            <span class="n">grad_factor</span><span class="o">=</span><span class="n">grad_factor</span><span class="p">,</span>
+            <span class="n">lut_rank</span><span class="o">=</span><span class="n">lut_rank</span><span class="p">,</span>
+            <span class="n">parametrization</span><span class="o">=</span><span class="n">parametrization</span><span class="p">,</span>
+            <span class="n">parametrization_kwargs</span><span class="o">=</span><span class="n">parametrization_kwargs</span><span class="p">,</span>
+            <span class="n">connections</span><span class="o">=</span><span class="n">connections</span><span class="p">,</span>
+            <span class="n">connections_kwargs</span><span class="o">=</span><span class="n">connections_kwargs</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">num_kernels</span> <span class="o">=</span> <span class="n">num_kernels</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">tree_depth</span> <span class="o">=</span> <span class="n">tree_depth</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">channels</span> <span class="o">=</span> <span class="n">channels</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">conv_dimension</span> <span class="o">=</span> <span class="n">conv_dimension</span>
+        <span class="k">assert</span> <span class="n">conv_dimension</span> <span class="ow">in</span> <span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span> <span class="s2">"conv_dimension must be 2 or 3"</span>
+        <span class="k">if</span> <span class="n">conv_dimension</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">receptive_field_size</span> <span class="o">=</span> <span class="n">_pair</span><span class="p">(</span><span class="n">receptive_field_size</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">in_dim</span> <span class="o">=</span> <span class="n">_pair</span><span class="p">(</span><span class="n">in_dim</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">receptive_field_size</span> <span class="o">=</span> <span class="n">_triple</span><span class="p">(</span><span class="n">receptive_field_size</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">in_dim</span> <span class="o">=</span> <span class="n">_triple</span><span class="p">(</span><span class="n">in_dim</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="p">(</span>
+            <span class="nb">all</span><span class="p">(</span><span class="n">stride</span> <span class="o">&lt;=</span> <span class="n">dim</span> <span class="k">for</span> <span class="n">dim</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">receptive_field_size</span><span class="p">)</span>
+        <span class="p">),</span> <span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"Stride (</span><span class="si">{</span><span class="n">stride</span><span class="si">}</span><span class="s2">) cannot be larger than "</span>
+            <span class="sa">f</span><span class="s2">"receptive field size (</span><span class="si">{</span><span class="n">receptive_field_size</span><span class="si">}</span><span class="s2">)"</span>
+        <span class="p">)</span>        
+        <span class="bp">self</span><span class="o">.</span><span class="n">stride</span> <span class="o">=</span> <span class="n">stride</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">padding</span> <span class="o">=</span> <span class="n">padding</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">tree_weights</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_init_weights</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">connections</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_init_connections</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">kernel_positions</span> <span class="o">=</span> <span class="p">[(</span><span class="n">in_dim</span> <span class="o">+</span> <span class="mi">2</span><span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">padding</span> <span class="o">-</span> <span class="n">rfs</span><span class="p">)</span> <span class="o">//</span> <span class="bp">self</span><span class="o">.</span><span class="n">stride</span> <span class="o">+</span> <span class="mi">1</span> 
+                   <span class="k">for</span> <span class="n">in_dim</span><span class="p">,</span> <span class="n">rfs</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">in_dim</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">receptive_field_size</span><span class="p">)]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_kernel_positions</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">prod</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">kernel_positions</span><span class="p">)</span>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_init_weights</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># Initialize tree weights using parametrization</span>
+        <span class="n">tree_weights</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">ParameterList</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">reversed</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tree_depth</span><span class="p">)):</span>
+            <span class="c1"># each tree level has lut_rank**i nodes per kernel</span>
+            <span class="n">level_weights</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">Parameter</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span>
+                <span class="p">[</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">parametrization</span><span class="o">.</span><span class="n">init_weights</span><span class="p">(</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">num_kernels</span><span class="p">,</span> 
+                        <span class="bp">self</span><span class="o">.</span><span class="n">device</span>
+                    <span class="p">)</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lut_rank</span><span class="o">**</span><span class="n">i</span><span class="p">)</span>
+                <span class="p">]</span>
+            <span class="p">))</span>
+            <span class="n">tree_weights</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">level_weights</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">tree_weights</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_init_connections</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+         <span class="c1"># Setup connections</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">connections</span> <span class="o">=</span> <span class="n">setup_connections</span><span class="p">(</span>
+            <span class="n">structure</span><span class="o">=</span><span class="s2">"conv"</span><span class="p">,</span>
+            <span class="n">connections</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">connections</span><span class="p">,</span>
+            <span class="n">lut_rank</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">lut_rank</span><span class="p">,</span>
+            <span class="n">device</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">,</span>
+            <span class="n">in_dim</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">in_dim</span><span class="p">,</span>
+            <span class="n">channels</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">channels</span><span class="p">,</span>
+            <span class="n">num_kernels</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">num_kernels</span><span class="p">,</span>
+            <span class="n">tree_depth</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">tree_depth</span><span class="p">,</span>
+            <span class="n">receptive_field_size</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">receptive_field_size</span><span class="p">,</span>
+            <span class="n">conv_dimension</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">conv_dimension</span><span class="p">,</span>
+            <span class="n">stride</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">stride</span><span class="p">,</span>
+            <span class="n">padding</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">padding</span><span class="p">,</span>
+            <span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">connections_kwargs</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">connections</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_apply_padding</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Zero-pad the spatial dims by ``self.padding`` on both sides.</span>
+
+<span class="sd">        Subclasses whose connections handle padding themselves override this</span>
+<span class="sd">        to a no-op (see ``_LogicConvTransposeNd``).</span>
+<span class="sd">        """</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">padding</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">pad</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">padding</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">padding</span><span class="p">)</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">conv_dimension</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">functional</span><span class="o">.</span><span class="n">pad</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">pad</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">"constant"</span><span class="p">,</span> <span class="n">value</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">x</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Applies the logic convolution to the input.</span>
+
+<span class="sd">        The forward pass proceeds as follows:</span>
+
+<span class="sd">        1. Optionally pad the input spatially.</span>
+<span class="sd">        2. Select all receptive-field positions for the first tree level using</span>
+<span class="sd">           precomputed index tensors.</span>
+<span class="sd">        3. For each tree level:</span>
+<span class="sd">            a. Sample or select LUT weights for all nodes at that level.</span>
+<span class="sd">            b. Apply binary logic operations to the child activations,</span>
+<span class="sd">               reducing them up the tree.</span>
+<span class="sd">        4. Reshape the final per-kernel outputs into a 4D tensor of shape</span>
+<span class="sd">           ``(batch_size, num_kernels, out_height, out_width)``.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            x: Input tensor of shape ``(batch_size, channels, height, width)``.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            Tensor of shape ``(batch_size, num_kernels, out_height, out_width)``,</span>
+<span class="sd">            where ``out_height`` and ``out_width`` are determined by the</span>
+<span class="sd">            convolution parameters:</span>
+
+<span class="sd">            * ``out_height = (in_height + 2 * padding - receptive_field_size) // stride + 1``</span>
+<span class="sd">            * ``out_width  = (in_width  + 2 * padding - receptive_field_size) // stride + 1``.</span>
+<span class="sd">        """</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">export_mode</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_forward_export_mode</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+        
+        <span class="n">x</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_apply_padding</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+
+        <span class="c1"># First level tree indices</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">connections</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="c1"># Process first level with einsum contraction</span>
+        <span class="c1"># b=batch, c=channels, s=spatial, f=features, k=num_basis/16</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">parametrization</span><span class="o">.</span><span class="n">forward</span><span class="p">(</span>
+            <span class="n">x</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">tree_weights</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">training</span><span class="p">,</span>
+            <span class="n">contraction</span><span class="o">=</span><span class="s1">'fc,bcsf-&gt;bcsf'</span>
+        <span class="p">)</span>
+        <span class="c1"># Process remaining levels</span>
+        <span class="k">for</span> <span class="n">level</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">tree_depth</span><span class="p">):</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">connections</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">level</span><span class="p">)</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">movedim</span><span class="p">(</span><span class="o">-</span><span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">parametrization</span><span class="o">.</span><span class="n">forward</span><span class="p">(</span>
+                <span class="n">x</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">tree_weights</span><span class="p">[</span><span class="n">level</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">training</span><span class="p">,</span>
+                <span class="n">contraction</span><span class="o">=</span><span class="s1">'fc,bcsf-&gt;bcsf'</span>
+            <span class="p">)</span>
+        <span class="c1"># Reshape flattened output</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">kernel_positions</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">x</span>
+    
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_forward_export_mode</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+
+        <span class="n">x</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_apply_padding</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+
+        <span class="c1"># First level</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">connections</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="n">a</span><span class="p">,</span> <span class="n">b</span> <span class="o">=</span> <span class="n">x</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">],</span> <span class="n">x</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span>
+
+        <span class="n">lut_ids_bc</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="sa">f</span><span class="s1">'_export_lut_ids_L0'</span><span class="p">)</span>
+
+        <span class="n">x</span> <span class="o">=</span> <span class="n">apply_luts_export_mode</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">lut_ids_bc</span><span class="p">)</span>
+
+        <span class="c1"># Remaining levels</span>
+        <span class="k">for</span> <span class="n">level</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">tree_depth</span><span class="p">):</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">connections</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">level</span><span class="p">)</span>
+            <span class="n">a</span><span class="p">,</span> <span class="n">b</span> <span class="o">=</span> <span class="n">x</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="p">:],</span> <span class="n">x</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="p">:]</span>
+            <span class="n">lut_ids_bc</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="sa">f</span><span class="s1">'_export_lut_ids_L</span><span class="si">{</span><span class="n">level</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
+
+            <span class="n">x</span> <span class="o">=</span> <span class="n">apply_luts_export_mode</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">lut_ids_bc</span><span class="p">)</span>
+
+        <span class="n">x</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">kernel_positions</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">x</span>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_luts_and_ids</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Computes the most probable LUT and its ID for each neuron.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            Tuple[List[List[torch.Tensor]], List[List[torch.Tensor]]]:</span>
+<span class="sd">                - ``tree_luts``: Nested list of Boolean tensors (truth tables)</span>
+<span class="sd">                - ``tree_ids``: Nested list of integer tensors (LUT IDs)</span>
+<span class="sd">        """</span>
+        <span class="n">tree_ids</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">tree_luts</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">level</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tree_depth</span><span class="p">):</span>
+            <span class="n">level_ids</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="n">level_luts</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">tree_weights</span><span class="p">[</span><span class="n">level</span><span class="p">]:</span>
+                <span class="n">luts</span><span class="p">,</span> <span class="n">ids</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">parametrization</span><span class="o">.</span><span class="n">get_luts_and_ids</span><span class="p">(</span><span class="n">w</span><span class="p">)</span>
+                <span class="n">level_ids</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ids</span><span class="p">)</span>
+                <span class="n">level_luts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">luts</span><span class="p">)</span>
+            <span class="n">tree_ids</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">level_ids</span><span class="p">)</span>
+            <span class="n">tree_luts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">level_luts</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">tree_luts</span><span class="p">,</span> <span class="n">tree_ids</span>
+    
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_luts</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Computes the most probable LUT for each neuron.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">           List[List[torch.Tensor]]: Nested list of Boolean tensors (LUTs)</span>
+<span class="sd">        """</span>
+        <span class="n">tree_luts</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">level</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tree_depth</span><span class="p">):</span>
+            <span class="n">level_luts</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">tree_weights</span><span class="p">[</span><span class="n">level</span><span class="p">]:</span>
+                <span class="n">luts</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">parametrization</span><span class="o">.</span><span class="n">get_luts</span><span class="p">(</span><span class="n">w</span><span class="p">)</span>
+                <span class="n">level_luts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">luts</span><span class="p">)</span>
+            <span class="n">tree_luts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">level_luts</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">tree_luts</span>
+    
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_regularization_loss</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">regularizer</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="n">reg_loss</span> <span class="o">=</span> <span class="mf">0.0</span>
+        <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">tree_weights</span><span class="p">:</span>
+            <span class="n">reg_loss</span> <span class="o">+=</span> <span class="n">get_regularization_loss</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="n">regularizer</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">reg_loss</span>
+    
+    <span class="k">def</span><span class="w"> </span><span class="nf">rescale_weights</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">method</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">tree_weights</span><span class="p">:</span>
+            <span class="n">rescale_weights</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="n">method</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_on_export_mode</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">enabled</span><span class="p">:</span> <span class="nb">bool</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Cache one LUT-ID buffer per tree level, pre-broadcast to the static</span>
+<span class="sd">        spatial shape the export path expects.</span>
+<span class="sd">        """</span>
+        <span class="k">if</span> <span class="n">enabled</span><span class="p">:</span>
+            <span class="n">_</span><span class="p">,</span> <span class="n">tree_ids</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_luts_and_ids</span><span class="p">()</span>
+
+            <span class="k">for</span> <span class="n">level_idx</span><span class="p">,</span> <span class="n">level_ids</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">tree_ids</span><span class="p">):</span>
+                <span class="n">stacked</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span><span class="n">level_ids</span><span class="p">)</span>  <span class="c1"># (lut_rank**i, num_kernels)</span>
+                <span class="c1"># shape: (num_kernels, spatial, n_nodes) — broadcasts over any batch dim</span>
+                <span class="n">stacked</span> <span class="o">=</span> <span class="n">stacked</span><span class="o">.</span><span class="n">T</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="o">-</span><span class="mi">2</span><span class="p">)</span>
+                <span class="n">stacked</span> <span class="o">=</span> <span class="n">stacked</span><span class="o">.</span><span class="n">expand</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_kernel_positions</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">register_buffer</span><span class="p">(</span><span class="sa">f</span><span class="s1">'_export_lut_ids_L</span><span class="si">{</span><span class="n">level_idx</span><span class="si">}</span><span class="s1">'</span><span class="p">,</span>
+                                    <span class="n">stacked</span><span class="p">,</span> <span class="n">persistent</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">buffers_to_delete</span> <span class="o">=</span> <span class="p">[</span><span class="n">name</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_buffers</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
+                                <span class="k">if</span> <span class="n">name</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s1">'_export_lut'</span><span class="p">)]</span>
+            <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">buffers_to_delete</span><span class="p">:</span>
+                <span class="nb">delattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_get_export_lut_ids</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">level</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="sa">f</span><span class="s1">'_export_lut_ids_L</span><span class="si">{</span><span class="n">level</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="LogicConv2d">
+<a class="viewcode-back" href="../../../api/layers.html#torchlogix.layers.LogicConv2d">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">LogicConv2d</span><span class="p">(</span><span class="n">_LogicConvNd</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""2D convolutional layer with differentiable logic operations.</span>
+
+<span class="sd">    This layer implements a 2D convolution where each output location is</span>
+<span class="sd">    computed by evaluating a learned logic tree over a receptive field.</span>
+<span class="sd">    Instead of linear filters, it uses a binary tree of differentiable</span>
+<span class="sd">    logic operations (LUTs) applied to selected positions in the receptive</span>
+<span class="sd">    field, per kernel and per spatial location.</span>
+<span class="sd">    """</span>
+<div class="viewcode-block" id="LogicConv2d.__init__">
+<a class="viewcode-back" href="../../../api/layers.html#torchlogix.layers.LogicConv2d.__init__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">in_dim</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">_size_2_t</span><span class="p">,</span> <span class="nb">int</span><span class="p">],</span>
+        <span class="n">channels</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span>
+        <span class="n">num_kernels</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">16</span><span class="p">,</span>
+        <span class="n">tree_depth</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">receptive_field_size</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">_size_2_t</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="mi">2</span><span class="p">,</span>
+        <span class="n">stride</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span>
+        <span class="n">padding</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
+        <span class="n">device</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"cpu"</span><span class="p">,</span>
+        <span class="n">grad_factor</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span>
+        <span class="n">lut_rank</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">2</span><span class="p">,</span>
+        <span class="n">parametrization</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"raw"</span><span class="p">,</span>
+        <span class="n">parametrization_kwargs</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">connections</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"fixed"</span><span class="p">,</span>
+        <span class="n">connections_kwargs</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span>
+            <span class="n">in_dim</span><span class="o">=</span><span class="n">in_dim</span><span class="p">,</span>
+            <span class="n">channels</span><span class="o">=</span><span class="n">channels</span><span class="p">,</span>
+            <span class="n">num_kernels</span><span class="o">=</span><span class="n">num_kernels</span><span class="p">,</span>
+            <span class="n">tree_depth</span><span class="o">=</span><span class="n">tree_depth</span><span class="p">,</span>
+            <span class="n">receptive_field_size</span><span class="o">=</span><span class="n">receptive_field_size</span><span class="p">,</span>
+            <span class="n">stride</span><span class="o">=</span><span class="n">stride</span><span class="p">,</span>
+            <span class="n">padding</span><span class="o">=</span><span class="n">padding</span><span class="p">,</span>
+            <span class="n">conv_dimension</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+            <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span>
+            <span class="n">grad_factor</span><span class="o">=</span><span class="n">grad_factor</span><span class="p">,</span>
+            <span class="n">lut_rank</span><span class="o">=</span><span class="n">lut_rank</span><span class="p">,</span>
+            <span class="n">parametrization</span><span class="o">=</span><span class="n">parametrization</span><span class="p">,</span>
+            <span class="n">parametrization_kwargs</span><span class="o">=</span><span class="n">parametrization_kwargs</span><span class="p">,</span>
+            <span class="n">connections</span><span class="o">=</span><span class="n">connections</span><span class="p">,</span>
+            <span class="n">connections_kwargs</span><span class="o">=</span><span class="n">connections_kwargs</span><span class="p">,</span>
+        <span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="LogicConv3d">
+<a class="viewcode-back" href="../../../api/layers.html#torchlogix.layers.LogicConv3d">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">LogicConv3d</span><span class="p">(</span><span class="n">_LogicConvNd</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""3D convolutional layer with differentiable logic operations.</span>
+
+<span class="sd">    This layer implements a 3D convolution where each output location is</span>
+<span class="sd">    computed by evaluating a learned logic tree over a receptive field.</span>
+<span class="sd">    Instead of linear filters, it uses a binary tree of differentiable</span>
+<span class="sd">    logic operations (LUTs) applied to selected positions in the receptive</span>
+<span class="sd">    field, per kernel and per spatial location.</span>
+<span class="sd">    """</span>
+<div class="viewcode-block" id="LogicConv3d.__init__">
+<a class="viewcode-back" href="../../../api/layers.html#torchlogix.layers.LogicConv3d.__init__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">in_dim</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">_size_3_t</span><span class="p">,</span> <span class="nb">int</span><span class="p">],</span>
+        <span class="n">channels</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span>
+        <span class="n">num_kernels</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">16</span><span class="p">,</span>
+        <span class="n">tree_depth</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">receptive_field_size</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">_size_3_t</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="mi">2</span><span class="p">,</span>
+        <span class="n">stride</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span>
+        <span class="n">padding</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
+        <span class="n">device</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"cpu"</span><span class="p">,</span>
+        <span class="n">grad_factor</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span>
+        <span class="n">lut_rank</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">2</span><span class="p">,</span>
+        <span class="n">parametrization</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"raw"</span><span class="p">,</span>
+        <span class="n">parametrization_kwargs</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">connections</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"fixed"</span><span class="p">,</span>
+        <span class="n">connections_kwargs</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span>
+            <span class="n">in_dim</span><span class="o">=</span><span class="n">in_dim</span><span class="p">,</span>
+            <span class="n">channels</span><span class="o">=</span><span class="n">channels</span><span class="p">,</span>
+            <span class="n">num_kernels</span><span class="o">=</span><span class="n">num_kernels</span><span class="p">,</span>
+            <span class="n">tree_depth</span><span class="o">=</span><span class="n">tree_depth</span><span class="p">,</span>
+            <span class="n">receptive_field_size</span><span class="o">=</span><span class="n">receptive_field_size</span><span class="p">,</span>
+            <span class="n">stride</span><span class="o">=</span><span class="n">stride</span><span class="p">,</span>
+            <span class="n">padding</span><span class="o">=</span><span class="n">padding</span><span class="p">,</span>
+            <span class="n">conv_dimension</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+            <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span>
+            <span class="n">grad_factor</span><span class="o">=</span><span class="n">grad_factor</span><span class="p">,</span>
+            <span class="n">lut_rank</span><span class="o">=</span><span class="n">lut_rank</span><span class="p">,</span>
+            <span class="n">parametrization</span><span class="o">=</span><span class="n">parametrization</span><span class="p">,</span>
+            <span class="n">parametrization_kwargs</span><span class="o">=</span><span class="n">parametrization_kwargs</span><span class="p">,</span>
+            <span class="n">connections</span><span class="o">=</span><span class="n">connections</span><span class="p">,</span>
+            <span class="n">connections_kwargs</span><span class="o">=</span><span class="n">connections_kwargs</span><span class="p">,</span>
+        <span class="p">)</span></div>
+</div>
+
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">_LogicConvTransposeNd</span><span class="p">(</span><span class="n">_LogicConvNd</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Abstract base class for transposed convolutional logic layers.</span>
+
+<span class="sd">    Extends ``_LogicConvNd`` with transpose (fractionally-strided) convolution</span>
+<span class="sd">    semantics: the spatial output is larger than the input. Each input position contributes</span>
+<span class="sd">    to multiple output positions. The output size along each spatial axis is:</span>
+
+<span class="sd">    out = (in - 1) * stride - 2 * padding + receptive_field_size + output_padding</span>
+
+<span class="sd">    Only ``__init__``, ``_init_connections``, and ``forward`` differ from the</span>
+<span class="sd">    base class; weight initialization and all utility methods are inherited.</span>
+
+<span class="sd">    Args:                                                                                   </span>
+<span class="sd">        output_padding: Additional size added to one side of the output shape</span>
+<span class="sd">            Must satisfy ``0 &lt;= output_padding &lt; stride``</span>
+<span class="sd">        (all other args): Same as ``_LogicConvNd``.</span>
+<span class="sd">    """</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">in_dim</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">_size_2_t</span><span class="p">,</span> <span class="n">_size_3_t</span><span class="p">,</span> <span class="nb">int</span><span class="p">],</span>
+        <span class="n">channels</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span>
+        <span class="n">num_kernels</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">16</span><span class="p">,</span>
+        <span class="n">tree_depth</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">receptive_field_size</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">_size_2_t</span><span class="p">,</span> <span class="n">_size_3_t</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="mi">2</span><span class="p">,</span>
+        <span class="n">stride</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span>
+        <span class="n">padding</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
+        <span class="n">output_padding</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
+        <span class="n">conv_dimension</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">2</span><span class="p">,</span>
+        <span class="n">device</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"cuda"</span><span class="p">,</span>
+        <span class="n">grad_factor</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span>
+        <span class="n">lut_rank</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">2</span><span class="p">,</span>
+        <span class="n">parametrization</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"raw"</span><span class="p">,</span>
+        <span class="n">parametrization_kwargs</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">connections</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"fixed"</span><span class="p">,</span>
+        <span class="n">connections_kwargs</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="p">):</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_output_padding_raw</span> <span class="o">=</span> <span class="n">output_padding</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span>
+            <span class="n">in_dim</span><span class="o">=</span><span class="n">in_dim</span><span class="p">,</span>
+            <span class="n">channels</span><span class="o">=</span><span class="n">channels</span><span class="p">,</span>
+            <span class="n">num_kernels</span><span class="o">=</span><span class="n">num_kernels</span><span class="p">,</span>
+            <span class="n">tree_depth</span><span class="o">=</span><span class="n">tree_depth</span><span class="p">,</span>
+            <span class="n">receptive_field_size</span><span class="o">=</span><span class="n">receptive_field_size</span><span class="p">,</span>
+            <span class="n">stride</span><span class="o">=</span><span class="n">stride</span><span class="p">,</span>
+            <span class="n">padding</span><span class="o">=</span><span class="n">padding</span><span class="p">,</span>
+            <span class="n">conv_dimension</span><span class="o">=</span><span class="n">conv_dimension</span><span class="p">,</span>
+            <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span>
+            <span class="n">grad_factor</span><span class="o">=</span><span class="n">grad_factor</span><span class="p">,</span>
+            <span class="n">lut_rank</span><span class="o">=</span><span class="n">lut_rank</span><span class="p">,</span>
+            <span class="n">parametrization</span><span class="o">=</span><span class="n">parametrization</span><span class="p">,</span>
+            <span class="n">parametrization_kwargs</span><span class="o">=</span><span class="n">parametrization_kwargs</span><span class="p">,</span>
+            <span class="n">connections</span><span class="o">=</span><span class="n">connections</span><span class="p">,</span>
+            <span class="n">connections_kwargs</span><span class="o">=</span><span class="n">connections_kwargs</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="c1"># The base class computes kernel_positions with the forward-conv</span>
+        <span class="c1"># formula, which is wrong here; the transposed output is larger.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">kernel_positions</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_out_dim</span><span class="p">())</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_kernel_positions</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">prod</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">kernel_positions</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_apply_padding</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""No-op: ``FixedConvTransposeConnections`` dilates and pads internally.</span>
+
+<span class="sd">        Padding here as well would double-pad the effective input.</span>
+<span class="sd">        """</span>
+        <span class="k">return</span> <span class="n">x</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_normalize_output_padding</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">output_padding</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Normalise output_padding to a tuple matching conv_dimension."""</span>
+        <span class="n">op</span> <span class="o">=</span> <span class="n">_pair</span><span class="p">(</span><span class="n">output_padding</span><span class="p">)</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">conv_dimension</span> <span class="o">==</span> <span class="mi">2</span> <span class="k">else</span> <span class="n">_triple</span><span class="p">(</span><span class="n">output_padding</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="nb">all</span><span class="p">(</span><span class="mi">0</span> <span class="o">&lt;=</span> <span class="n">v</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">stride</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">op</span><span class="p">),</span> <span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"output_padding (</span><span class="si">{</span><span class="n">output_padding</span><span class="si">}</span><span class="s2">) must satisfy "</span>
+            <span class="sa">f</span><span class="s2">"0 &lt;= output_padding &lt; stride (</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">stride</span><span class="si">}</span><span class="s2">)"</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">op</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_out_dim</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Output spatial dimensions under the transposed-conv formula."""</span>
+        <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span>
+            <span class="p">(</span><span class="n">d</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">stride</span> <span class="o">-</span> <span class="mi">2</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">padding</span> <span class="o">+</span> <span class="n">rfs</span> <span class="o">+</span> <span class="n">op</span>
+            <span class="k">for</span> <span class="n">d</span><span class="p">,</span> <span class="n">rfs</span><span class="p">,</span> <span class="n">op</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">in_dim</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">receptive_field_size</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">output_padding</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_init_connections</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">output_padding</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_normalize_output_padding</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_output_padding_raw</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">connections</span> <span class="o">=</span> <span class="n">setup_connections</span><span class="p">(</span>
+            <span class="n">structure</span><span class="o">=</span><span class="s2">"conv_transpose"</span><span class="p">,</span>
+            <span class="n">connections</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">connections</span><span class="p">,</span>
+            <span class="n">lut_rank</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">lut_rank</span><span class="p">,</span>
+            <span class="n">device</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">,</span>
+            <span class="n">in_dim</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">in_dim</span><span class="p">,</span>
+            <span class="n">channels</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">channels</span><span class="p">,</span>
+            <span class="n">num_kernels</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">num_kernels</span><span class="p">,</span>
+            <span class="n">tree_depth</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">tree_depth</span><span class="p">,</span>
+            <span class="n">receptive_field_size</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">receptive_field_size</span><span class="p">,</span>
+            <span class="n">conv_dimension</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">conv_dimension</span><span class="p">,</span>
+            <span class="n">stride</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">stride</span><span class="p">,</span>
+            <span class="n">padding</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">padding</span><span class="p">,</span>
+            <span class="n">output_padding</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">output_padding</span><span class="p">,</span>
+            <span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">connections_kwargs</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">connections</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">LogicConvTranspose2d</span><span class="p">(</span><span class="n">_LogicConvTransposeNd</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""2D transposed convolutional layer with differentiable logic operations.</span>
+
+<span class="sd">    The spatial output is larger than the input — this is the logic-layer</span>
+<span class="sd">    analogue of ``torch.nn.ConvTranspose2d``.</span>
+<span class="sd">    """</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">in_dim</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">_size_2_t</span><span class="p">,</span> <span class="nb">int</span><span class="p">],</span>
+        <span class="n">channels</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span>
+        <span class="n">num_kernels</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">16</span><span class="p">,</span>
+        <span class="n">tree_depth</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">receptive_field_size</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">_size_2_t</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="mi">2</span><span class="p">,</span>
+        <span class="n">stride</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span>
+        <span class="n">padding</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
+        <span class="n">output_padding</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
+        <span class="n">device</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"cpu"</span><span class="p">,</span>
+        <span class="n">grad_factor</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span>
+        <span class="n">lut_rank</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">2</span><span class="p">,</span>
+        <span class="n">parametrization</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"raw"</span><span class="p">,</span>
+        <span class="n">parametrization_kwargs</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">connections</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"fixed"</span><span class="p">,</span>
+        <span class="n">connections_kwargs</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span>
+            <span class="n">in_dim</span><span class="o">=</span><span class="n">in_dim</span><span class="p">,</span>
+            <span class="n">channels</span><span class="o">=</span><span class="n">channels</span><span class="p">,</span>
+            <span class="n">num_kernels</span><span class="o">=</span><span class="n">num_kernels</span><span class="p">,</span>
+            <span class="n">tree_depth</span><span class="o">=</span><span class="n">tree_depth</span><span class="p">,</span>
+            <span class="n">receptive_field_size</span><span class="o">=</span><span class="n">receptive_field_size</span><span class="p">,</span>
+            <span class="n">stride</span><span class="o">=</span><span class="n">stride</span><span class="p">,</span>
+            <span class="n">padding</span><span class="o">=</span><span class="n">padding</span><span class="p">,</span>
+            <span class="n">output_padding</span><span class="o">=</span><span class="n">output_padding</span><span class="p">,</span>
+            <span class="n">conv_dimension</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+            <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span>
+            <span class="n">grad_factor</span><span class="o">=</span><span class="n">grad_factor</span><span class="p">,</span>
+            <span class="n">lut_rank</span><span class="o">=</span><span class="n">lut_rank</span><span class="p">,</span>
+            <span class="n">parametrization</span><span class="o">=</span><span class="n">parametrization</span><span class="p">,</span>
+            <span class="n">parametrization_kwargs</span><span class="o">=</span><span class="n">parametrization_kwargs</span><span class="p">,</span>
+            <span class="n">connections</span><span class="o">=</span><span class="n">connections</span><span class="p">,</span>
+            <span class="n">connections_kwargs</span><span class="o">=</span><span class="n">connections_kwargs</span><span class="p">,</span>
+        <span class="p">)</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">LogicConvTranspose3d</span><span class="p">(</span><span class="n">_LogicConvTransposeNd</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""3D transposed convolutional layer with differentiable logic operations.</span>
+
+<span class="sd">    The spatial output is larger than the input — this is the logic-layer</span>
+<span class="sd">    analogue of ``torch.nn.ConvTranspose3d``.</span>
+<span class="sd">    """</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">in_dim</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">_size_3_t</span><span class="p">,</span> <span class="nb">int</span><span class="p">],</span>
+        <span class="n">channels</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span>
+        <span class="n">num_kernels</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">16</span><span class="p">,</span>
+        <span class="n">tree_depth</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">receptive_field_size</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">_size_3_t</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="mi">2</span><span class="p">,</span>
+        <span class="n">stride</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span>
+        <span class="n">padding</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
+        <span class="n">output_padding</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
+        <span class="n">device</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"cpu"</span><span class="p">,</span>
+        <span class="n">grad_factor</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span>
+        <span class="n">lut_rank</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">2</span><span class="p">,</span>
+        <span class="n">parametrization</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"raw"</span><span class="p">,</span>
+        <span class="n">parametrization_kwargs</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">connections</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"fixed"</span><span class="p">,</span>
+        <span class="n">connections_kwargs</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span>
+            <span class="n">in_dim</span><span class="o">=</span><span class="n">in_dim</span><span class="p">,</span>
+            <span class="n">channels</span><span class="o">=</span><span class="n">channels</span><span class="p">,</span>
+            <span class="n">num_kernels</span><span class="o">=</span><span class="n">num_kernels</span><span class="p">,</span>
+            <span class="n">tree_depth</span><span class="o">=</span><span class="n">tree_depth</span><span class="p">,</span>
+            <span class="n">receptive_field_size</span><span class="o">=</span><span class="n">receptive_field_size</span><span class="p">,</span>
+            <span class="n">stride</span><span class="o">=</span><span class="n">stride</span><span class="p">,</span>
+            <span class="n">padding</span><span class="o">=</span><span class="n">padding</span><span class="p">,</span>
+            <span class="n">output_padding</span><span class="o">=</span><span class="n">output_padding</span><span class="p">,</span>
+            <span class="n">conv_dimension</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+            <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span>
+            <span class="n">grad_factor</span><span class="o">=</span><span class="n">grad_factor</span><span class="p">,</span>
+            <span class="n">lut_rank</span><span class="o">=</span><span class="n">lut_rank</span><span class="p">,</span>
+            <span class="n">parametrization</span><span class="o">=</span><span class="n">parametrization</span><span class="p">,</span>
+            <span class="n">parametrization_kwargs</span><span class="o">=</span><span class="n">parametrization_kwargs</span><span class="p">,</span>
+            <span class="n">connections</span><span class="o">=</span><span class="n">connections</span><span class="p">,</span>
+            <span class="n">connections_kwargs</span><span class="o">=</span><span class="n">connections_kwargs</span><span class="p">,</span>
+        <span class="p">)</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2023-2024 Felix Petersen (original DiffLogic), Lino Gerlach (TorchLogix extensions).</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,231 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TorchLogix Documentation &mdash; TorchLogix 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=01f34227"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="_static/copybutton.js?v=30646c52"></script>
+      <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Installation Guide" href="guides/installation.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="#" class="icon icon-home">
+            TorchLogix
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="guides/installation.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="guides/quickstart.html">Quick Start</a></li>
+<li class="toctree-l1"><a class="reference internal" href="guides/concepts.html">Core Concepts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="guides/hardware_deployment.html">Hardware Deployment Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="guides/hardware_deployment.html#circuit-native"><code class="docutils literal notranslate"><span class="pre">Circuit</span></code> (native)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="guides/aig_export.html">AIG Export Guide</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="api/torchlogix.html">TorchLogix Package</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/circuit.html">Circuit</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/layers.html">Layers Module</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/models.html">Models Module</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/functional.html">Functional Module</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="#">TorchLogix</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="#" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">TorchLogix Documentation</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/index.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="torchlogix-documentation">
+<h1>TorchLogix Documentation<a class="headerlink" href="#torchlogix-documentation" title="Link to this heading"></a></h1>
+<p><strong>TorchLogix</strong> is a PyTorch-based library for training and inference of <strong>logic neural networks</strong>.
+These solve machine learning tasks by learning combinations of boolean logic expressions.
+As the choice of boolean expressions is conventionally non-differentiable, relaxations are applied to allow training with gradient-based methods.
+The final model can be discretized again, resulting in a fully boolean expression with extremely efficient inference, e.g., beyond a
+million images of MNIST per second on a single CPU core.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>TorchLogix is based on the <cite>difflogic</cite> package ([<a class="reference external" href="https://github.com/Felix-Petersen/difflogic/](https://github.com/Felix-Petersen/difflogic/">https://github.com/Felix-Petersen/difflogic/](https://github.com/Felix-Petersen/difflogic/</a>)),
+and extends it by new concepts such as compact parametrizations, higher-dimensional logic blocks, learnable connections and binarization as
+described in “WARP Logic Neural Networks” (Paper &#64; [ArXiv](<a class="reference external" href="https://arxiv.org/abs/2602.03527">https://arxiv.org/abs/2602.03527</a>)).
+It also implements convolutions as described in “Convolutional Differentiable Logic Gate Networks (Paper &#64; [ArXiv](<a class="reference external" href="https://arxiv.org/pdf/2411.04732">https://arxiv.org/pdf/2411.04732</a>)).</p>
+</div>
+<section id="documentation-contents">
+<h2>Documentation Contents<a class="headerlink" href="#documentation-contents" title="Link to this heading"></a></h2>
+<div class="toctree-wrapper compound">
+<p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="guides/installation.html">Installation Guide</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="guides/installation.html#requirements">Requirements</a></li>
+<li class="toctree-l2"><a class="reference internal" href="guides/installation.html#basic-installation">Basic Installation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="guides/installation.html#conda-environment">Conda Environment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="guides/installation.html#verification">Verification</a></li>
+<li class="toctree-l2"><a class="reference internal" href="guides/installation.html#supported-versions">Supported Versions</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="guides/quickstart.html">Quick Start</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="guides/quickstart.html#define-a-model">Define a model</a></li>
+<li class="toctree-l2"><a class="reference internal" href="guides/quickstart.html#train">Train</a></li>
+<li class="toctree-l2"><a class="reference internal" href="guides/quickstart.html#convert-to-circuit-and-compile">Convert to Circuit and compile</a></li>
+<li class="toctree-l2"><a class="reference internal" href="guides/quickstart.html#export-to-c-or-verilog">Export to C or Verilog</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="guides/concepts.html">Core Concepts</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="guides/concepts.html#design-philosophy">Design Philosophy</a></li>
+<li class="toctree-l2"><a class="reference internal" href="guides/concepts.html#pytorch-api-compatibility">PyTorch API Compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="guides/concepts.html#separation-of-concerns">Separation of Concerns</a></li>
+<li class="toctree-l2"><a class="reference internal" href="guides/concepts.html#layer-specific-concepts">Layer-Specific Concepts</a></li>
+<li class="toctree-l2"><a class="reference internal" href="guides/concepts.html#supporting-components">Supporting Components</a></li>
+<li class="toctree-l2"><a class="reference internal" href="guides/concepts.html#advanced-topics">Advanced Topics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="guides/concepts.html#deployment-from-training-to-inference">Deployment: From Training to Inference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="guides/concepts.html#common-patterns">Common Patterns</a></li>
+<li class="toctree-l2"><a class="reference internal" href="guides/concepts.html#summary">Summary</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="guides/hardware_deployment.html">Hardware Deployment Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="guides/hardware_deployment.html#circuit-native"><code class="docutils literal notranslate"><span class="pre">Circuit</span></code> (native)</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="guides/hardware_deployment.html#verilog-interface">Verilog interface</a></li>
+<li class="toctree-l2"><a class="reference internal" href="guides/hardware_deployment.html#simulation-with-verilator">Simulation with Verilator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="guides/hardware_deployment.html#fpga-synthesis-with-vivado">FPGA synthesis with Vivado</a></li>
+<li class="toctree-l2"><a class="reference internal" href="guides/hardware_deployment.html#design-considerations">Design considerations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="guides/hardware_deployment.html#compiling-with-alkaid">Compiling with <code class="docutils literal notranslate"><span class="pre">alkaid</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="guides/aig_export.html">AIG Export Guide</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="guides/aig_export.html#build-a-circuit">1. Build a <code class="docutils literal notranslate"><span class="pre">Circuit</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="guides/aig_export.html#simplify-optional">2. Simplify (optional)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="guides/aig_export.html#convert-to-an-aiggraph">3. Convert to an <code class="docutils literal notranslate"><span class="pre">AIGGraph</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="guides/aig_export.html#write-the-aig-file">4. Write the <code class="docutils literal notranslate"><span class="pre">.aig</span></code> file</a></li>
+<li class="toctree-l2"><a class="reference internal" href="guides/aig_export.html#read-the-file-with-abc-or-mockturtle">5. Read the file with ABC or mockturtle</a></li>
+<li class="toctree-l2"><a class="reference internal" href="guides/aig_export.html#output-bit-ordering-and-decoding">6. Output bit ordering and decoding</a></li>
+<li class="toctree-l2"><a class="reference internal" href="guides/aig_export.html#limitations">Limitations</a></li>
+</ul>
+</li>
+</ul>
+</div>
+<div class="toctree-wrapper compound">
+<p class="caption" role="heading"><span class="caption-text">API Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="api/torchlogix.html">TorchLogix Package</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="api/torchlogix.html#main-classes">Main Classes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/torchlogix.html#module-torchlogix">Package Contents</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/torchlogix.html#submodules">Submodules</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="api/circuit.html">Circuit</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="api/circuit.html#torchlogix.Circuit"><code class="docutils literal notranslate"><span class="pre">Circuit</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="api/layers.html">Layers Module</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="api/layers.html#convolutional-layers">Convolutional Layers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/layers.html#dense-layers">Dense Layers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/layers.html#other-layers">Other Layers</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="api/models.html">Models Module</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="api/models.html#pre-built-models">Pre-built Models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/models.html#model-details">Model Details</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="api/functional.html">Functional Module</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="api/functional.html#logic-operations">Logic Operations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/functional.html#utility-functions">Utility Functions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/functional.html#constants">Constants</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/functional.html#function-details">Function Details</a></li>
+</ul>
+</li>
+</ul>
+</div>
+</section>
+</section>
+<section id="indices-and-tables">
+<h1>Indices and Tables<a class="headerlink" href="#indices-and-tables" title="Link to this heading"></a></h1>
+<ul class="simple">
+<li><p><a class="reference internal" href="genindex.html"><span class="std std-ref">Index</span></a></p></li>
+<li><p><a class="reference internal" href="py-modindex.html"><span class="std std-ref">Module Index</span></a></p></li>
+<li><p><a class="reference internal" href="search.html"><span class="std std-ref">Search Page</span></a></p></li>
+</ul>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="guides/installation.html" class="btn btn-neutral float-right" title="Installation Guide" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2023-2024 Felix Petersen (original DiffLogic), Lino Gerlach (TorchLogix extensions).</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
